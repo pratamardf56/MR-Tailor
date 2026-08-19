@@ -1,0 +1,17 @@
+Starting project at D:\Project
+Using src/app as the root directory for Expo Router.
+React Compiler enabled
+Starting Metro Bundler
+
+Waiting on http://localhost:8090
+
+Logs for your project will appear below.
+λ Bundled 5176ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (1096 modules)
+"shadow*" style props are deprecated. Use "boxShadow".
+Web Bundled 5975ms node_modules\expo-router\entry.js (1030 modules)
+λ Bundled 76ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (1 module)
+"shadow*" style props are deprecated. Use "boxShadow".
+Web Bundled 511ms node_modules\expo-router\entry.js (1 module)
+λ Bundled 35ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (1 module)
+"shadow*" style props are deprecated. Use "boxShadow".
+Web Bundled 291ms node_modules\expo-router\entry.js (1 module)
