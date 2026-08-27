@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   },
   noteBox: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(27, 42, 74, 0.05)', // light primary
+    backgroundColor: 'rgba(74, 46, 34, 0.05)', // light primary
     padding: 16,
     borderRadius: 12,
     alignItems: 'flex-start',

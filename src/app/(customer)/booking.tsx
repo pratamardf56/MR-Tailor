@@ -2,7 +2,7 @@
  * Godabaya Tailor — Booking Form Screen
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, useWindowDimensions } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,16 +26,21 @@ export default function BookingScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
-  const { preselectedService } = useLocalSearchParams<{ preselectedService?: string }>();
+  const {
+    preselectedService,
+    name: preName,
+    phone: prePhone,
+    date: preDate,
+  } = useLocalSearchParams<{ preselectedService?: string; name?: string; phone?: string; date?: string }>();
   const { createBooking } = useBookings();
   const { customer } = useAuth();
-  
+
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  
+
   // Form state
-  const [name, setName] = useState(customer?.name ?? '');
-  const [phone, setPhone] = useState(customer?.whatsapp ?? '');
+  const [name, setName] = useState(customer?.name ?? preName ?? '');
+  const [phone, setPhone] = useState(customer?.whatsapp ?? prePhone ?? '');
   const [pin, setPin] = useState('');
   const [service, setService] = useState(
     preselectedService && ServiceCategories.includes(preselectedService as any)
@@ -44,7 +49,15 @@ export default function BookingScreen() {
   );
   const [prevPreselectedService, setPrevPreselectedService] = useState<string | undefined>(preselectedService);
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState<Date>(DEFAULT_REQUESTED_DATE);
+  const [date, setDate] = useState<Date>(() => {
+    if (preDate) {
+      const parsed = new Date(preDate);
+      if (!isNaN(parsed.getTime()) && parsed.getTime() >= MIN_BOOKING_DATE.getTime() - 86400000) {
+        return parsed;
+      }
+    }
+    return DEFAULT_REQUESTED_DATE;
+  });
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   
@@ -135,20 +148,36 @@ export default function BookingScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
+      {/* Page Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Booking Jahitan</Text>
-        <Text style={styles.subtitle}>Isi data pesanan Anda dengan lengkap agar kami dapat memproses kebutuhan jahitan Anda.</Text>
+        <View style={styles.headerLeft}>
+          <View style={styles.headerIconBox}>
+            <Ionicons name="cut-outline" size={20} color={Colors.primary} />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>BOOKING JAHITAN</Text>
+            <Text style={styles.subtitle}>Isi data pesanan Anda dengan lengkap agar kami dapat memproses kebutuhan jahitan Anda.</Text>
+          </View>
+        </View>
+        <TouchableOpacity onPress={() => router.replace('/(customer)')} style={styles.closeBtn} activeOpacity={0.7}>
+          <Ionicons name="close" size={20} color={Colors.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
         <View style={isDesktop ? styles.desktopContainer : styles.mobileContainer}>
           
-          {/* KOLOM KIRI (Form) */}
+          {/* KOLOM KIRI — Form */}
           <View style={isDesktop ? styles.leftColumn : styles.fullColumn}>
             
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Informasi Pemesan</Text>
+            {/* Card: Data Pesanan */}
+            <View style={[styles.formCard, isDesktop ? styles.formCardDesktop : styles.formCardMobile]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="person-outline" size={18} color={Colors.primary} />
+                <Text style={styles.sectionTitle}>DATA PESANAN</Text>
+              </View>
+
               <Input
                 label="Nama Lengkap"
                 placeholder="Masukkan nama lengkap"
@@ -166,11 +195,14 @@ export default function BookingScreen() {
                 error={errors.phone}
                 required
               />
-              <Text style={styles.helperText}>Nomor ini digunakan untuk melihat pesanan Anda.</Text>
+              <Text style={styles.helperText}>
+                <Ionicons name="information-circle-outline" size={12} color={Colors.textTertiary} />
+                {' '}Nomor ini digunakan untuk melihat pesanan Anda.
+              </Text>
               
               <Input
                 label="PIN"
-                placeholder="••••"
+                placeholder="Masukkan PIN 4–6 digit"
                 value={pin}
                 onChangeText={setPin}
                 secureTextEntry
@@ -179,12 +211,13 @@ export default function BookingScreen() {
                 error={errors.pin}
                 required
               />
-              <Text style={styles.helperText}>PIN (4-6 angka) digunakan untuk mengakses pesanan Anda.</Text>
-            </View>
+              <Text style={styles.helperText}>
+                <Ionicons name="lock-closed-outline" size={12} color={Colors.textTertiary} />
+                {' '}PIN digunakan untuk mengakses pesanan Anda.
+              </Text>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Detail Pesanan</Text>
-              
+              <View style={styles.divider} />
+
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Jenis Layanan <Text style={styles.required}>*</Text></Text>
                 <View style={styles.serviceChips}>
@@ -193,6 +226,7 @@ export default function BookingScreen() {
                       key={cat}
                       style={[styles.serviceChip, service === cat && styles.serviceChipActive]}
                       onPress={() => setService(cat)}
+                      activeOpacity={0.75}
                     >
                       <Text style={[styles.serviceChipText, service === cat && styles.serviceChipTextActive]}>
                         {cat}
@@ -207,9 +241,11 @@ export default function BookingScreen() {
                 <TouchableOpacity 
                   style={styles.dateSelector} 
                   onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.8}
                 >
-                  <Ionicons name="calendar-outline" size={20} color={Colors.textSecondary} />
+                  <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
                   <Text style={styles.dateText}>{formatDateFull(date)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} style={{ marginLeft: 'auto' }} />
                 </TouchableOpacity>
                 
                 {showDatePicker && (
@@ -236,65 +272,104 @@ export default function BookingScreen() {
 
               <Input
                 label="Catatan Tambahan"
-                placeholder="Tambahkan catatan jika ada permintaan khusus."
+                placeholder="Tambahkan permintaan khusus jika ada."
                 value={notes}
                 onChangeText={setNotes}
                 multiline
                 numberOfLines={2}
               />
+
+              {/* Foto Referensi */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Foto Referensi <Text style={styles.optional}>(Opsional)</Text></Text>
+                <TouchableOpacity style={styles.photoPickerBtn} onPress={pickImage} activeOpacity={0.8}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.photoPreview} />
+                  ) : (
+                    <View style={styles.photoPlaceholder}>
+                      <Ionicons name="camera-outline" size={28} color={Colors.textTertiary} />
+                      <Text style={styles.photoPlaceholderText}>Tap untuk memilih foto</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                {imageUri && (
+                  <TouchableOpacity onPress={() => setImageUri(null)} style={styles.removePhotoBtn}>
+                    <Ionicons name="trash-outline" size={14} color={Colors.error} />
+                    <Text style={styles.removePhotoText}>Hapus Foto</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
 
           </View>
 
-          {/* KOLOM KANAN (Ringkasan) */}
+          {/* KOLOM KANAN — Ringkasan */}
           <View style={isDesktop ? styles.rightColumn : styles.fullColumn}>
             
-            <View style={[styles.section, isDesktop && { paddingTop: 0 }]}>
+            <View style={[styles.summaryWrapper, isDesktop ? styles.summaryWrapperDesktop : styles.summaryWrapperMobile]}>
+              {/* Ringkasan Pesanan */}
               <View style={styles.summaryCard}>
-                <Text style={styles.sectionTitle}>Ringkasan Pesanan</Text>
+                <View style={styles.cardHeader}>
+                  <Ionicons name="clipboard-outline" size={18} color={Colors.primary} />
+                  <Text style={styles.sectionTitle}>RINGKASAN PESANAN</Text>
+                </View>
                 
                 {name || phone || description ? (
                   <View style={styles.summaryContent}>
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Nama:</Text>
+                      <Text style={styles.summaryLabel}>Nama</Text>
                       <Text style={styles.summaryValue}>{name || '-'}</Text>
                     </View>
+                    <View style={styles.summaryDivider} />
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>WhatsApp:</Text>
+                      <Text style={styles.summaryLabel}>WhatsApp</Text>
                       <Text style={styles.summaryValue}>{phone || '-'}</Text>
                     </View>
+                    <View style={styles.summaryDivider} />
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Layanan:</Text>
+                      <Text style={styles.summaryLabel}>Layanan</Text>
                       <Text style={styles.summaryValue}>{service}</Text>
                     </View>
+                    <View style={styles.summaryDivider} />
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Tanggal:</Text>
+                      <Text style={styles.summaryLabel}>Tanggal</Text>
                       <Text style={styles.summaryValue}>{formatDateFull(date)}</Text>
                     </View>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Detail:</Text>
-                      <Text style={styles.summaryValue}>{description || '-'}</Text>
-                    </View>
+                    {description ? (
+                      <>
+                        <View style={styles.summaryDivider} />
+                        <View style={styles.summaryRow}>
+                          <Text style={styles.summaryLabel}>Detail</Text>
+                          <Text style={[styles.summaryValue, { flex: 2 }]} numberOfLines={3}>{description}</Text>
+                        </View>
+                      </>
+                    ) : null}
                   </View>
                 ) : (
-                  <Text style={styles.emptySummary}>Ringkasan pesanan akan muncul setelah Anda mengisi form.</Text>
+                  <View style={styles.emptySummaryBox}>
+                    <Ionicons name="clipboard-outline" size={28} color={Colors.textTertiary} />
+                    <Text style={styles.emptySummary}>Ringkasan pesanan akan muncul setelah Anda mengisi form.</Text>
+                  </View>
                 )}
               </View>
 
+              {/* Data Aman */}
               <View style={styles.privacyCard}>
-                <Ionicons name="shield-checkmark" size={24} color={Colors.primary} />
+                <View style={styles.privacyIconBox}>
+                  <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+                </View>
                 <View style={styles.privacyTextContent}>
-                  <Text style={styles.privacyTitle}>DATA ANDA AMAN</Text>
+                  <Text style={styles.privacyTitle}>DATA ANDA AMAN 🔒</Text>
                   <Text style={styles.privacyDesc}>Data pesanan Anda hanya dapat diakses menggunakan informasi yang sesuai.</Text>
                 </View>
               </View>
-
             </View>
 
           </View>
 
         </View>
 
+        {/* Submit Button */}
         <View style={[styles.submitContainer, isDesktop && styles.desktopSubmitContainer]}>
           <Button 
             title="KIRIM PESANAN" 
@@ -314,31 +389,65 @@ export default function BookingScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F5F2EB', // Cream / beige background
+    backgroundColor: Colors.background,  // Cream
   },
+
+  // Header
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
     zIndex: 10,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    flex: 1,
+  },
+  closeBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: 'rgba(74,46,34,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  headerText: {
+    flex: 1,
+  },
   title: {
-    ...Typography.h3,
-    color: '#3E2723', // Cokelat tua
+    ...Typography.h4,
+    color: Colors.primary,
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   subtitle: {
-    ...Typography.body,
+    ...Typography.bodySm,
     color: Colors.textSecondary,
-    marginTop: 4,
+    marginTop: 3,
+    lineHeight: 18,
   },
+
   scrollContent: {
     paddingBottom: 40,
   },
@@ -346,33 +455,66 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 20,
     paddingTop: 24,
-    gap: 32,
+    gap: 24,
     maxWidth: 1200,
     alignSelf: 'center',
     width: '100%',
   },
   mobileContainer: {
     flexDirection: 'column',
-    paddingTop: 8,
+    paddingTop: 4,
   },
   leftColumn: {
     flex: 2,
   },
   rightColumn: {
     flex: 1,
-    paddingTop: 24,
   },
   fullColumn: {
     width: '100%',
   },
-  section: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
+
+  // Form Card
+  formCard: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  formCardDesktop: {
+    borderRadius: 20,
+    padding: 24,
+    marginTop: 0,
+  },
+  formCardMobile: {
+    borderRadius: 0,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
+    marginTop: 0,
+  },
+
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 20,
   },
   sectionTitle: {
-    ...Typography.h4,
-    color: '#3E2723',
-    marginBottom: 16,
+    ...Typography.bodyMedium,
+    color: Colors.primary,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    fontSize: 13,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.borderLight,
+    marginVertical: 16,
   },
   inputContainer: {
     marginBottom: 16,
@@ -381,15 +523,22 @@ const styles = StyleSheet.create({
     ...Typography.label,
     color: Colors.text,
     marginBottom: 8,
+    fontWeight: '600',
   },
   required: {
     color: Colors.error,
+  },
+  optional: {
+    color: Colors.textTertiary,
+    fontWeight: '400',
+    fontSize: 12,
   },
   helperText: {
     ...Typography.caption,
     color: Colors.textTertiary,
     marginTop: -8,
-    marginBottom: 16,
+    marginBottom: 14,
+    lineHeight: 16,
   },
   serviceChips: {
     flexDirection: 'row',
@@ -397,16 +546,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   serviceChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 20,
     backgroundColor: Colors.surface,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.borderLight,
   },
   serviceChipActive: {
-    backgroundColor: '#8D6E63', // Cokelat muda/gold accent
-    borderColor: '#8D6E63',
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   serviceChipText: {
     ...Typography.bodySm,
@@ -415,6 +564,7 @@ const styles = StyleSheet.create({
   },
   serviceChipTextActive: {
     color: Colors.textOnPrimary,
+    fontWeight: '600',
   },
   dateSelector: {
     flexDirection: 'row',
@@ -424,80 +574,152 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 13,
+    gap: 10,
   },
   dateText: {
     ...Typography.body,
     color: Colors.text,
-    marginLeft: 10,
+    flex: 1,
+  },
+
+  // Photo picker
+  photoPickerBtn: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+    minHeight: 110,
+  },
+  photoPreview: {
+    width: '100%',
+    height: 160,
+    resizeMode: 'cover',
+  },
+  photoPlaceholder: {
+    flex: 1,
+    minHeight: 110,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundAlt,
+    gap: 8,
+  },
+  photoPlaceholderText: {
+    ...Typography.bodySm,
+    color: Colors.textTertiary,
+  },
+  removePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    alignSelf: 'flex-end',
+  },
+  removePhotoText: {
+    ...Typography.caption,
+    color: Colors.error,
+  },
+
+  // Summary
+  summaryWrapper: {},
+  summaryWrapperDesktop: {
+    paddingTop: 0,
+    gap: 16,
+  },
+  summaryWrapperMobile: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 14,
   },
   summaryCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 20,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    borderColor: Colors.borderLight,
     shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowOpacity: 1,
+    shadowRadius: 10,
     elevation: 3,
-    marginBottom: 20,
   },
   summaryContent: {
-    gap: 12,
+    gap: 0,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    paddingVertical: 10,
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: Colors.borderLight,
   },
   summaryLabel: {
     ...Typography.bodySm,
     color: Colors.textSecondary,
-    width: 80,
+    width: 75,
+    flexShrink: 0,
   },
   summaryValue: {
     ...Typography.bodySm,
     color: Colors.text,
     flex: 1,
-    fontWeight: '500',
+    fontWeight: '600',
     textAlign: 'right',
   },
+  emptySummaryBox: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 10,
+  },
   emptySummary: {
-    ...Typography.body,
+    ...Typography.bodySm,
     color: Colors.textTertiary,
     fontStyle: 'italic',
     textAlign: 'center',
-    paddingVertical: 20,
   },
   privacyCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EFEBE1',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: Colors.backgroundAlt,
+    borderRadius: 14,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#E6E0D3',
+    borderColor: Colors.borderLight,
+    gap: 12,
+  },
+  privacyIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74,46,34,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
   privacyTextContent: {
     flex: 1,
-    marginLeft: 12,
   },
   privacyTitle: {
     ...Typography.bodySm,
     fontWeight: '700',
-    color: '#3E2723',
-    marginBottom: 2,
+    color: Colors.primary,
+    marginBottom: 3,
   },
   privacyDesc: {
     ...Typography.caption,
     color: Colors.textSecondary,
+    lineHeight: 16,
   },
+
+  // Submit
   submitContainer: {
     paddingHorizontal: 20,
-    paddingTop: 32,
-    paddingBottom: 20,
+    paddingTop: 24,
+    paddingBottom: 12,
   },
   desktopSubmitContainer: {
     maxWidth: 1200,
@@ -507,7 +729,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   submitBtn: {
-    backgroundColor: '#3E2723', // Cokelat tua
-    borderRadius: 12,
-  }
+    borderRadius: 14,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
 });

@@ -43,6 +43,7 @@ export default function RootLayout() {
             <Stack.Screen name="service-detail" />
             <Stack.Screen name="order-detail" />
             <Stack.Screen name="portfolio" />
+            <Stack.Screen name="alamat" />
           </Stack>
         </TailorAuthProvider>
       </AuthProvider>

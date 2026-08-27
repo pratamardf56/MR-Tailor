@@ -53,7 +53,7 @@ export function Button({
       ]}
       onPress={onPress}
       disabled={isDisabled}
-      activeOpacity={0.7}
+      activeOpacity={0.78}
     >
       {loading ? (
         <ActivityIndicator
@@ -95,15 +95,15 @@ const styles = StyleSheet.create({
 
   // Variants
   variant_primary: {
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.primary,   // Cokelat tua #4A2E22
   },
   variant_secondary: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.accent,    // Amber/gold
   },
   variant_outline: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: Colors.accent,
+    borderColor: Colors.primary,
   },
   variant_danger: {
     backgroundColor: Colors.error,
@@ -132,6 +132,7 @@ const styles = StyleSheet.create({
   text: {
     ...Typography.button,
     color: Colors.textOnPrimary,
+    letterSpacing: 0.3,
   },
   text_primary: {
     color: Colors.textOnPrimary,
@@ -140,12 +141,12 @@ const styles = StyleSheet.create({
     color: Colors.textOnPrimary,
   },
   text_outline: {
-    color: Colors.accent,
+    color: Colors.primary,
   },
   text_danger: {
     color: Colors.textOnPrimary,
   },
   text_ghost: {
-    color: Colors.accent,
+    color: Colors.primary,
   },
 });

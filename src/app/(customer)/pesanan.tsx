@@ -94,8 +94,25 @@ export default function PesananScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Pesanan Saya</Text>
-        <Text style={styles.subtitle}>Pantau status pengerjaan pesanan Anda</Text>
+        <View style={styles.headerLeft}>
+          <View>
+            <Text style={styles.title}>Pesanan Saya</Text>
+            <Text style={styles.subtitle}>Pantau status pengerjaan pesanan Anda</Text>
+          </View>
+        </View>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.bookNowBtn}
+            onPress={() => router.push('/(customer)/booking')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={18} color={Colors.textOnPrimary} />
+            <Text style={styles.bookNowText}>Baru</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.replace('/(customer)')} style={styles.closeBtn} activeOpacity={0.7}>
+            <Ionicons name="close" size={20} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.listContainer}>
@@ -110,16 +127,20 @@ export default function PesananScreen() {
             renderItem={renderItem}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="receipt-outline" size={64} color={Colors.textTertiary} />
+                <View style={styles.emptyIconBox}>
+                  <Ionicons name="receipt-outline" size={40} color={Colors.accent} />
+                </View>
                 <Text style={styles.emptyTitle}>Belum ada pesanan</Text>
                 <Text style={styles.emptyText}>Anda belum membuat pesanan apapun.</Text>
                 <TouchableOpacity 
                   style={styles.bookBtn} 
                   onPress={() => router.push('/(customer)/booking')}
+                  activeOpacity={0.82}
                 >
+                  <Ionicons name="cut-outline" size={16} color={Colors.textOnPrimary} />
                   <Text style={styles.bookBtnText}>Buat Pesanan Sekarang</Text>
                 </TouchableOpacity>
               </View>
@@ -134,32 +155,68 @@ export default function PesananScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.background,  // Cream
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
   },
+  headerLeft: {
+    flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  closeBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   title: {
     ...Typography.h3,
     color: Colors.text,
+    fontSize: 19,
   },
   subtitle: {
     ...Typography.bodySm,
     color: Colors.textSecondary,
-    marginTop: 4,
+    marginTop: 2,
+  },
+  bookNowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  bookNowText: {
+    ...Typography.buttonSm,
+    color: Colors.textOnPrimary,
+    fontSize: 13,
   },
   listContainer: {
     flex: 1,
   },
   listContent: {
-    padding: 20,
+    padding: 16,
     paddingBottom: 40,
-    gap: 16,
+    gap: 12,
   },
   centerContainer: {
     flex: 1,
@@ -169,12 +226,13 @@ const styles = StyleSheet.create({
   bookingCard: {
     marginBottom: 0,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    borderColor: Colors.borderLight,
     elevation: 2,
     shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    backgroundColor: Colors.surface,
   },
   rejectBox: {
     flexDirection: 'row',
@@ -209,10 +267,10 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   iconBox: {
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: 12,
-    backgroundColor: 'rgba(200, 149, 108, 0.1)', // Light primary
+    backgroundColor: 'rgba(74, 46, 34, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -222,6 +280,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 16,
     marginBottom: 2,
+    fontWeight: '600',
   },
   dateText: {
     ...Typography.caption,
@@ -232,27 +291,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 60,
+    paddingHorizontal: 20,
+  },
+  emptyIconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(200, 149, 108, 0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   emptyTitle: {
     ...Typography.h4,
     color: Colors.text,
-    marginTop: 16,
     marginBottom: 8,
   },
   emptyText: {
     ...Typography.body,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
   },
   bookBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     backgroundColor: Colors.primary,
     paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingVertical: 13,
     borderRadius: 24,
   },
   bookBtnText: {
     ...Typography.buttonSm,
     color: Colors.textOnPrimary,
-  }
+    fontWeight: '600',
+  },
 });

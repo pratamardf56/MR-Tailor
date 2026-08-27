@@ -59,15 +59,10 @@ export default function PortfolioScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Ionicons 
-          name="arrow-back" 
-          size={24} 
-          color={Colors.text} 
-          onPress={() => router.back()} 
-          style={styles.backBtn}
-        />
         <Text style={styles.headerTitle}>Hasil Jahitan Kami</Text>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={() => router.replace('/(customer)')} style={styles.backBtn} activeOpacity={0.7}>
+          <Ionicons name="close" size={20} color={Colors.text} />
+        </TouchableOpacity>
       </View>
 
       {/* Category Filter */}
@@ -158,7 +153,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   backBtn: {
-    padding: 4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     ...Typography.h4,

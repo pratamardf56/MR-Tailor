@@ -60,11 +60,10 @@ export default function TailorLoginScreen() {
         >
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-              <Ionicons name="arrow-back" size={24} color={Colors.text} />
-            </TouchableOpacity>
             <Text style={styles.headerTitle}>Akses Penjahit</Text>
-            <View style={{ width: 24 }} />
+            <TouchableOpacity onPress={() => router.replace('/(customer)')} style={styles.backBtn} activeOpacity={0.7}>
+              <Ionicons name="close" size={20} color={Colors.text} />
+            </TouchableOpacity>
           </View>
 
           {/* Brand */}
@@ -155,7 +154,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   backBtn: {
-    padding: 4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     ...Typography.h4,

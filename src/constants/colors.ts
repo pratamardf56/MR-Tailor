@@ -2,30 +2,30 @@
  * Godabaya Tailor — Color Palette
  * 
  * Warm, professional colors inspired by fabric, thread, and craftsmanship.
- * Deep navy for trust, warm amber/gold for craftsmanship, cream for softness.
+ * Dark brown (#4A2E22) for trust & elegance, warm amber/gold for craftsmanship, cream for softness.
  */
 
 export const Colors = {
-  // Primary
-  primary: '#1B2A4A',        // Deep navy - trust, professionalism
-  primaryLight: '#2D4A7A',   // Lighter navy
-  primaryDark: '#0F1A2E',    // Darker navy
+  // Primary — Cokelat tua hangat
+  primary: '#4A2E22',        // Dark brown - elegant, professional
+  primaryLight: '#6B3F2E',   // Lighter brown
+  primaryDark: '#2D1A12',    // Darker brown
 
-  // Accent
+  // Accent — Amber/gold
   accent: '#C8956C',         // Warm amber/gold - craftsmanship
   accentLight: '#E0B896',    // Lighter amber
   accentDark: '#A07550',     // Darker amber
 
-  // Background
-  background: '#FAF6F0',     // Warm cream
-  backgroundAlt: '#F0EBE3',  // Slightly darker cream
-  surface: '#FFFFFF',        // Card surfaces
+  // Background — Cream & beige
+  background: '#F5EFE6',     // Warm cream (#F5EFE6)
+  backgroundAlt: '#EDE5D8',  // Slightly darker cream
+  surface: '#FFFDF9',        // Card surfaces - very light cream
   surfaceElevated: '#FFFFFF',
 
   // Text
-  text: '#1A1A2E',          // Near-black
-  textSecondary: '#6B7280',  // Gray
-  textTertiary: '#9CA3AF',   // Light gray
+  text: '#2D1A12',           // Dark brown-black
+  textSecondary: '#6B5C53',  // Muted brown
+  textTertiary: '#A08C82',   // Light brown-gray
   textOnPrimary: '#FFFFFF',  // White text on dark backgrounds
   textOnAccent: '#FFFFFF',   // White text on accent
 
@@ -45,19 +45,19 @@ export const Colors = {
   info: '#3B82F6',
 
   // Border
-  border: '#E5E1DB',
-  borderLight: '#F0EBE3',
+  border: '#DDD0C4',
+  borderLight: '#EDE5D8',
   borderFocus: '#C8956C',
 
   // Misc
-  divider: '#E5E1DB',
+  divider: '#DDD0C4',
   overlay: 'rgba(0, 0, 0, 0.5)',
-  shadow: 'rgba(27, 42, 74, 0.08)',
+  shadow: 'rgba(74, 46, 34, 0.10)',
   
   // Tab bar
-  tabActive: '#C8956C',
-  tabInactive: '#9CA3AF',
-  tabBarBackground: '#FFFFFF',
+  tabActive: '#4A2E22',
+  tabInactive: '#A08C82',
+  tabBarBackground: '#FFFDF9',
 } as const;
 
 export type ColorKey = keyof typeof Colors;

@@ -5,9 +5,9 @@
 export const AppConfig = {
   name: 'Godabaya Tailor',
   tagline: 'Jahit & Permak Pakaian Sesuai Kebutuhan Anda',
-  address: 'Godabaya, Sukadana, Malausma, Majalengka, Jawa Barat, Indonesia',
-  addressShort: 'Godabaya, Sukadana, Malausma, Majalengka',
-  mapsQuery: 'Godabaya, Sukadana, Malausma, Majalengka, Jawa Barat',
+  address: 'Jawa Barat, Majalengka, Malausma, Sukadana, Godabaya',
+  addressShort: 'Sukadana, Malausma, Majalengka',
+  mapsQuery: 'Jawa Barat, Majalengka, Malausma, Sukadana, Godabaya',
   
   // Default WhatsApp message
   whatsappMessage: 'Halo, saya ingin bertanya mengenai jasa jahit Godabaya Tailor.',
@@ -33,8 +33,16 @@ export const ServiceCategories = [
 
 export type ServiceCategory = typeof ServiceCategories[number];
 
-// Home page categories (with icons)
+// Home page categories (with icons) — 4 main services for homepage display
 export const HomeCategories = [
+  { label: 'Jahit Pakaian', icon: 'shirt-outline' as const, category: 'Jahit Baju' as ServiceCategory, desc: 'Jahit baju pria & wanita sesuai kebutuhan' },
+  { label: 'Permak Pakaian', icon: 'cut-outline' as const, category: 'Permak Baju' as ServiceCategory, desc: 'Permak celana, baju, rok, dan lainnya' },
+  { label: 'Custom Pakaian', icon: 'color-palette-outline' as const, category: 'Custom' as ServiceCategory, desc: 'Buat pakaian custom sesuai desain Anda' },
+  { label: 'Pengerjaan Tepat Waktu', icon: 'time-outline' as const, category: 'Lainnya' as ServiceCategory, desc: 'Kami selalu mengutamakan ketepatan waktu' },
+] as const;
+
+// All service categories for booking form
+export const AllServiceCategories = [
   { label: 'Jahit Baju', icon: 'shirt-outline' as const, category: 'Jahit Baju' as ServiceCategory },
   { label: 'Jahit Celana', icon: 'cut-outline' as const, category: 'Jahit Celana' as ServiceCategory },
   { label: 'Permak', icon: 'construct-outline' as const, category: 'Permak Baju' as ServiceCategory },
@@ -60,22 +68,30 @@ export type BookingStatusType = typeof BookingStatus[keyof typeof BookingStatus]
 // Status labels in Indonesian
 export const BookingStatusLabels: Record<BookingStatusType, string> = {
   [BookingStatus.PENDING]: 'Menunggu Konfirmasi',
-  [BookingStatus.ACCEPTED]: 'Pesanan Diterima',
+  [BookingStatus.ACCEPTED]: 'Diterima',
   [BookingStatus.DATE_PROPOSED]: 'Tanggal Alternatif Diajukan',
-  [BookingStatus.REJECTED]: 'Pesanan Ditolak',
+  [BookingStatus.REJECTED]: 'Ditolak',
   [BookingStatus.WAITING_WORK]: 'Menunggu Pengerjaan',
-  [BookingStatus.IN_PROGRESS]: 'Sedang Dikerjakan',
-  [BookingStatus.COMPLETED]: 'Selesai',
-  [BookingStatus.PICKED_UP]: 'Sudah Diambil',
+  [BookingStatus.IN_PROGRESS]: 'Diproses',
+  [BookingStatus.COMPLETED]: 'Selesai Jahit',
+  [BookingStatus.PICKED_UP]: 'Siap Diambil',
 };
 
-// Why choose us
+// Why choose us — matching reference design
 export const WhyChooseUs = [
-  { icon: 'checkmark-circle-outline' as const, title: 'Jahitan Sesuai Permintaan', desc: 'Setiap pesanan dikerjakan sesuai keinginan Anda' },
-  { icon: 'color-palette-outline' as const, title: 'Bisa Custom Model', desc: 'Bebas pilih model pakaian yang Anda inginkan' },
-  { icon: 'wallet-outline' as const, title: 'Harga Terjangkau', desc: 'Harga bersaing dengan kualitas terjamin' },
-  { icon: 'chatbubbles-outline' as const, title: 'Konsultasi Gratis', desc: 'Bisa konsultasi terlebih dahulu sebelum memesan' },
-  { icon: 'location-outline' as const, title: 'Lokasi Mudah Ditemukan', desc: 'Berada di lokasi yang mudah dijangkau' },
+  { icon: 'ribbon-outline' as const, title: 'Kualitas Terbaik', desc: 'Hasil jahitan rapi dan tahan lama' },
+  { icon: 'heart-outline' as const, title: 'Pelayanan Ramah', desc: 'Kami siap melayani dengan sepenuh hati' },
+  { icon: 'shield-checkmark-outline' as const, title: 'Aman & Terpercaya', desc: 'Data dan pesanan Anda kami jaga kerahasiaannya' },
+  { icon: 'wallet-outline' as const, title: 'Harga Terjangkau', desc: 'Harga sesuai kualitas dan tidak memberatkan' },
+] as const;
+
+// Navigation menu for desktop navbar
+export const NavMenu = [
+  { label: 'Beranda', route: '/(customer)' as const },
+  { label: 'Layanan', route: '/(customer)/harga' as const },
+  { label: 'Harga', route: '/(customer)/harga' as const },
+  { label: 'Alamat', route: '/alamat' as const },
+  { label: 'Tentang Kami', route: '/portfolio' as const },
 ] as const;
 
 // Portfolio categories

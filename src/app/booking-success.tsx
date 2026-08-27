@@ -87,7 +87,7 @@ export default function BookingSuccessScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.background,  // Cream
   },
   container: {
     flex: 1,
@@ -160,6 +160,7 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     letterSpacing: 2,
     marginRight: 16,
+    fontWeight: '800',
   },
   copyBtn: {
     padding: 4,
@@ -175,5 +176,10 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     marginBottom: 12,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   }
 });

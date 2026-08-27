@@ -3,17 +3,11 @@
  * Bottom tabs: Home | Harga | Booking | Pesanan | Profil
  */
 
-import { Tabs, router } from 'expo-router';
-import { useEffect } from 'react';
+import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { useAuth } from '@/auth/AuthContext';
 
 export default function CustomerTabLayout() {
-  const { customer } = useAuth();
-
-
-
   return (
     <Tabs
       screenOptions={{
