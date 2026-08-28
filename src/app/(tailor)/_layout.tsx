@@ -7,16 +7,22 @@ import { Tabs, router } from 'expo-router';
 import { useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
+import { ADMIN_ENABLED } from '@/constants/admin';
 import { useTailorAuth } from '@/auth/TailorAuthContext';
 
 export default function TailorTabLayout() {
   const { tailor } = useTailorAuth();
 
   useEffect(() => {
-    if (!tailor) {
+    // Website customer bersifat publik: akses admin tidak tersedia di web.
+    if (!ADMIN_ENABLED) {
+      router.replace('/(customer)');
+    } else if (!tailor) {
       router.replace('/penjahit');
     }
   }, [tailor]);
+
+  if (!ADMIN_ENABLED) return null;
 
   return (
     <Tabs

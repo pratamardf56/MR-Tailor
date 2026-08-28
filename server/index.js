@@ -17,6 +17,25 @@ const PORT = Number(process.env.PORT) || 3001;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const MAX_BODY_BYTES = 40 * 1024 * 1024; // 40MB (foto reference/portfolio base64)
 
+// Daftar origin yang diizinkan (dipisah koma). Kosong / '*' = izinkan semua
+// (hanya untuk pengembangan). Untuk produksi, isi domain website customer.
+// Contoh: ALLOWED_ORIGINS=https://godabaya-tailor.vercel.app
+const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const ALLOW_ALL_ORIGINS = ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes('*');
+
+// Kredensial admin penjahit (dari env agar tidak hardcode di produksi).
+// Ganti ADMIN_PIN dengan PIN kuat sebelum go-public.
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || '081214386602').replace(/[\s-]/g, '');
+const ADMIN_PIN = String(process.env.ADMIN_PIN || '9999');
+const ADMIN_NAME = String(process.env.ADMIN_NAME || 'Penjahit');
+
+// Rate limit login (anti brute-force): maks percobaan per window per IP.
+const LOGIN_MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS) || 8;
+const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS) || 15 * 60 * 1000; // 15 menit
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 // ============ Database ============
@@ -137,10 +156,10 @@ try {
 db.exec(SEED_SERVICES_SQL);
 db.exec(SEED_SETTINGS_SQL);
 
-// Akun penjahit default: pemegang nomor 0812-1438-6602 / PIN 9999
-// (menggantikan akun lama 'penjahit')
+// Akun penjahit default (dari env ADMIN_USERNAME / ADMIN_PIN / ADMIN_NAME).
+// Menggantikan akun lama 'penjahit'.
 (function seedTailor() {
-  const DEFAULT_TAILOR = { username: '081214386602', pin: '9999', name: 'Penjahit' };
+  const DEFAULT_TAILOR = { username: ADMIN_USERNAME, pin: ADMIN_PIN, name: ADMIN_NAME };
   const PIN_PREFIX = 'godabaya-tailor-pin';
 
   function hashPin(pin, salt, prefix) {
@@ -246,15 +265,27 @@ function rowToCustomer(r) {
 }
 
 // ============ HTTP ============
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+// CORS dinamis: pantulkan origin bila diizinkan (mendukung kredensial/preflight).
+function corsHeaders(req) {
+  const origin = req.headers.origin;
+  const headers = {
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
+  };
+  if (ALLOW_ALL_ORIGINS) {
+    headers['Access-Control-Allow-Origin'] = '*';
+  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+  // Bila origin tidak diizinkan: header Allow-Origin tidak dikirim → browser blokir.
+  return headers;
+}
 
-function send(res, status, data) {
+function send(res, status, data, req) {
   const body = JSON.stringify(data);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
+  const cors = req ? corsHeaders(req) : (res._cors || {});
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...cors });
   res.end(body);
 }
 
@@ -288,6 +319,31 @@ function bearerToken(req) {
   return h.startsWith('Bearer ') ? h.slice(7).trim() : null;
 }
 
+// Rate limiter sederhana in-memory untuk endpoint login (anti brute-force).
+const loginAttempts = new Map(); // key -> { count, resetAt }
+
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function checkLoginRate(req) {
+  const key = clientIp(req);
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= LOGIN_MAX_ATTEMPTS;
+}
+
+function resetLoginRate(req) {
+  loginAttempts.delete(clientIp(req));
+}
+
 // Autentikasi: validasi token; kembalikan session role 'customer' | 'tailor'
 function requireRole(req, res, role) {
   const token = bearerToken(req);
@@ -308,8 +364,11 @@ function createSession(role, refId) {
 // ============ Server ============
 const server = http.createServer(async (req, res) => {
   try {
+    // Simpan header CORS untuk request ini agar dipakai semua respons.
+    res._cors = corsHeaders(req);
+
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, CORS_HEADERS);
+      res.writeHead(204, res._cors);
       res.end();
       return;
     }
@@ -366,6 +425,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (method === 'POST' && parts[1] === 'customer' && parts[2] === 'login') {
+      if (!checkLoginRate(req)) {
+        return send(res, 429, { error: 'Terlalu banyak percobaan login. Coba lagi nanti.' });
+      }
       const wa = normalizeWa(body.whatsapp);
       const pin = String(body.pin || '').trim();
       if (!wa) return send(res, 400, { error: 'Nomor WhatsApp harus diisi' });
@@ -378,6 +440,7 @@ const server = http.createServer(async (req, res) => {
       if (hashPin(pin, row.pin_salt, 'godabaya-customer-pin') !== row.pin_hash) {
         return send(res, 400, { error: 'PIN salah.' });
       }
+      resetLoginRate(req);
       if (variants.length > 0) {
         run(
           `UPDATE bookings SET customer_id = ? WHERE customer_id IS NULL AND customer_phone IN (${variants.map(() => '?').join(', ')})`,
@@ -403,6 +466,9 @@ const server = http.createServer(async (req, res) => {
 
     // ---------- Tailor auth ----------
     if (method === 'POST' && parts[1] === 'tailor' && parts[2] === 'login') {
+      if (!checkLoginRate(req)) {
+        return send(res, 429, { error: 'Terlalu banyak percobaan login. Coba lagi nanti.' });
+      }
       const user = String(body.username || '').trim().replace(/[\s-]/g, '').toLowerCase();
       const pin = String(body.pin || '').trim();
       if (!user) return send(res, 400, { error: 'Username harus diisi' });
@@ -411,6 +477,7 @@ const server = http.createServer(async (req, res) => {
       if (hashPin(pin, row.pin_salt, 'godabaya-tailor-pin') !== row.pin_hash) {
         return send(res, 400, { error: 'PIN salah.' });
       }
+      resetLoginRate(req);
       const token = createSession('tailor', row.id);
       return send(res, 200, {
         token,
@@ -805,6 +872,19 @@ const server = http.createServer(async (req, res) => {
          ORDER BY c.created_at DESC`
       );
       return send(res, 200, { customers: rows });
+    }
+
+    // ---------- Reset akun (penjahit) ----------
+    // Hapus semua customer + lepas relasi booking. Pesanan, layanan,
+    // portofolio, dan pengaturan tetap tersimpan.
+    if (method === 'POST' && parts[1] === 'admin' && parts[2] === 'reset-accounts') {
+      const auth = requireRole(req, res, 'tailor');
+      if (!auth) return;
+      run('DELETE FROM customers;');
+      run('UPDATE bookings SET customer_id = NULL;');
+      // Hapus seluruh sesi customer yang masih aktif
+      run("DELETE FROM sessions WHERE role = 'customer';");
+      return send(res, 200, { ok: true });
     }
 
     send(res, 404, { error: 'Endpoint tidak ditemukan' });

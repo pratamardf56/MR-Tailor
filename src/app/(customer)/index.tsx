@@ -26,6 +26,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { HomeCategories, NavMenu, WhyChooseUs } from '@/constants/config';
+import { ADMIN_ENABLED } from '@/constants/admin';
 
 // Sewing machine / tailor workshop photo — warm, cinematic, dark brown atmosphere.
 const HERO_IMAGE = require('../../../assets/images/hero-sewing-machine.jpg');
@@ -195,10 +196,12 @@ export default function HomeScreen() {
         {/* ═══════════════ FOOTER ═══════════════ */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>© 2026 Godabaya Tailor. All rights reserved.</Text>
-          <TouchableOpacity onPress={() => router.push('/penjahit')} activeOpacity={0.7} style={styles.adminLink}>
-            <Ionicons name="lock-closed-outline" size={11} color="rgba(255,255,255,0.45)" />
-            <Text style={styles.adminLinkText}>Akses Admin / Penjahit</Text>
-          </TouchableOpacity>
+          {ADMIN_ENABLED && (
+            <TouchableOpacity onPress={() => router.push('/penjahit')} activeOpacity={0.7} style={styles.adminLink}>
+              <Ionicons name="lock-closed-outline" size={11} color="rgba(255,255,255,0.45)" />
+              <Text style={styles.adminLinkText}>Akses Admin / Penjahit</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 

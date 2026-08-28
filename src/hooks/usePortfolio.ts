@@ -1,69 +1,39 @@
 /**
  * Godabaya Tailor — Portfolio Hook
+ *
+ * Data portofolio melalui backend REST bersama (server/index.js).
  */
 
 import { useCallback } from 'react';
-import { useDatabase } from '@/database/provider';
 import { PortfolioItem } from '@/types';
+import { apiRequest } from '@/utils/api';
 
 export function usePortfolio() {
-  const { db } = useDatabase();
-
   const getPortfolio = useCallback(async (category?: string): Promise<PortfolioItem[]> => {
-    if (!db) return [];
-
-    let query = 'SELECT * FROM portfolio ORDER BY created_at DESC';
-    let params: any[] = [];
-
-    if (category && category !== 'Semua') {
-      query = 'SELECT * FROM portfolio WHERE category = ? ORDER BY created_at DESC';
-      params = [category];
-    }
-
-    const results = await db.getAllAsync<{
-      id: number; image_uri: string; category: string;
-      description: string | null; created_at: string;
-    }>(query, params);
-
-    return results.map((r) => ({
-      id: r.id,
-      imageUri: r.image_uri,
-      category: r.category,
-      description: r.description,
-      createdAt: r.created_at,
-    }));
-  }, [db]);
+    const query = category && category !== 'Semua' ? `?category=${encodeURIComponent(category)}` : '';
+    const res = await apiRequest<{ portfolio: PortfolioItem[] }>(`/api/portfolio${query}`);
+    return res.portfolio ?? [];
+  }, []);
 
   const addPortfolioItem = useCallback(async (data: {
     imageUri: string; category: string; description?: string;
   }): Promise<void> => {
-    if (!db) return;
-    await db.runAsync(
-      'INSERT INTO portfolio (image_uri, category, description) VALUES (?, ?, ?)',
-      [data.imageUri, data.category, data.description || null]
-    );
-  }, [db]);
+    await apiRequest('/api/portfolio', {
+      method: 'POST',
+      role: 'tailor',
+      body: { imageUri: data.imageUri, category: data.category, description: data.description ?? null },
+    });
+  }, []);
 
   const deletePortfolioItem = useCallback(async (id: number): Promise<void> => {
-    if (!db) return;
-    await db.runAsync('DELETE FROM portfolio WHERE id = ?', [id]);
-  }, [db]);
+    await apiRequest(`/api/portfolio/${id}`, { method: 'DELETE', role: 'tailor' });
+  }, []);
 
   const updatePortfolioItem = useCallback(async (id: number, data: {
     category?: string; description?: string;
   }): Promise<void> => {
-    if (!db) return;
-    const fields: string[] = [];
-    const values: any[] = [];
-
-    if (data.category !== undefined) { fields.push('category = ?'); values.push(data.category); }
-    if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description); }
-
-    if (fields.length === 0) return;
-    values.push(id);
-
-    await db.runAsync(`UPDATE portfolio SET ${fields.join(', ')} WHERE id = ?`, values);
-  }, [db]);
+    await apiRequest(`/api/portfolio/${id}`, { method: 'PUT', role: 'tailor', body: data });
+  }, []);
 
   return { getPortfolio, addPortfolioItem, deletePortfolioItem, updatePortfolioItem };
 }

@@ -4,7 +4,7 @@
  * Route khusus: /penjahit. Menggunakan Username + PIN (terpisah dari customer).
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { Typography } from '@/constants/typography';
 import { AppConfig } from '@/constants/config';
+import { ADMIN_ENABLED } from '@/constants/admin';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useTailorAuth } from '@/auth/TailorAuthContext';
@@ -24,6 +25,15 @@ export default function TailorLoginScreen() {
   const [pin, setPin] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
+  // Website customer bersifat publik: akses admin tidak tersedia di web.
+  useEffect(() => {
+    if (!ADMIN_ENABLED) {
+      router.replace('/(customer)');
+    }
+  }, []);
+
+  if (!ADMIN_ENABLED) return null;
 
   const validate = () => {
     const e: Record<string, string> = {};

@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { Typography } from '@/constants/typography';
 import { useAuth } from '@/auth/AuthContext';
+import { ADMIN_ENABLED } from '@/constants/admin';
 import { Alert } from '@/utils/alert';
 
 export default function CekPesananScreen() {
@@ -163,6 +164,7 @@ export default function CekPesananScreen() {
             </View>
 
             {/* Fallback Admin button */}
+            {ADMIN_ENABLED && (
             <TouchableOpacity
               style={styles.adminCard}
               onPress={() => router.push('/penjahit')}
@@ -179,6 +181,7 @@ export default function CekPesananScreen() {
               </View>
               <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
             </TouchableOpacity>
+            )}
 
             {/* Description note */}
             <View style={styles.noteContainer}>

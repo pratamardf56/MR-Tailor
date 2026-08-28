@@ -7,11 +7,9 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { router } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { Typography } from '@/constants/typography';
-import { useDatabase } from '@/database/provider';
 import { useAuth } from '@/auth/AuthContext';
 
 export default function SplashEntry() {
-  const { isReady } = useDatabase();
   const { customer, isLoading } = useAuth();
   const [fadeAnim] = useState(new Animated.Value(0));
   const [scaleAnim] = useState(new Animated.Value(0.85));
@@ -33,13 +31,13 @@ export default function SplashEntry() {
   }, [fadeAnim, scaleAnim]);
 
   useEffect(() => {
-    if (isReady && !isLoading) {
+    if (!isLoading) {
       const timer = setTimeout(() => {
         router.replace('/(customer)');
       }, 1600);
       return () => clearTimeout(timer);
     }
-  }, [isReady, isLoading, customer]);
+  }, [isLoading, customer]);
 
   return (
     <View style={styles.container}>

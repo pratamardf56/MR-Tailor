@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { Typography } from '@/constants/typography';
 import { Card } from '@/components/ui/Card';
-import { useDatabase } from '@/database/provider';
+import { apiRequest } from '@/utils/api';
 import { formatDateShort } from '@/utils/format';
 
 interface CustomerSummary {
@@ -22,7 +22,6 @@ interface CustomerSummary {
 }
 
 export default function TailorCustomersScreen() {
-  const { db } = useDatabase();
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -30,20 +29,14 @@ export default function TailorCustomersScreen() {
   const loadCustomers = useCallback(async () => {
     try {
       setLoading(true);
-      if (!db) return;
-      const rows = await db.getAllAsync<CustomerSummary>(
-        `SELECT c.id, c.name, c.whatsapp, c.created_at,
-                (SELECT COUNT(*) FROM bookings b WHERE b.customer_id = c.id) AS booking_count
-         FROM customers c
-         ORDER BY c.created_at DESC`
-      );
-      setCustomers(rows);
+      const res = await apiRequest<{ customers: CustomerSummary[] }>('/api/customers', { role: 'tailor' });
+      setCustomers(res.customers ?? []);
     } catch (error) {
       console.error('Gagal memuat customer:', error);
     } finally {
       setLoading(false);
     }
-  }, [db]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {

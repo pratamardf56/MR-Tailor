@@ -54,7 +54,7 @@ export default function PengaturanScreen() {
   const handleResetAccounts = () => {
     Alert.alert(
       'Reset Semua Akun',
-      'Semua nomor WhatsApp customer akan dihapus dan PIN admin dikembalikan ke default (9999). Pesanan, harga, portofolio, dan pengaturan tetap aman. Lanjutkan?',
+      'Semua nomor WhatsApp customer akan dihapus. Pesanan, harga, portofolio, dan pengaturan tetap aman. Akun admin tidak terpengaruh. Lanjutkan?',
       [
         { text: 'Batal', style: 'cancel' },
         {
@@ -64,8 +64,7 @@ export default function PengaturanScreen() {
             setResetting(true);
             try {
               await resetAccounts();
-              await logoutTailor();
-              router.replace('/penjahit');
+              Alert.alert('Berhasil', 'Semua akun customer telah dihapus.');
             } catch {
               Alert.alert('Gagal', 'Terjadi kesalahan saat mereset akun. Coba lagi.');
             } finally {
@@ -218,7 +217,7 @@ export default function PengaturanScreen() {
               <View style={styles.accountInfo}>
                 <Text style={styles.dangerTitle}>Reset Semua Akun</Text>
                 <Text style={styles.dangerDesc}>
-                  Hapus seluruh customer (nomor WhatsApp & PIN) dan kembalikan PIN admin ke default.
+                  Hapus seluruh customer (nomor WhatsApp & PIN). Pesanan & data bisnis tetap tersimpan.
                 </Text>
               </View>
             </View>

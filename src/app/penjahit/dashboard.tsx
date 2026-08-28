@@ -16,6 +16,7 @@ import { Typography } from '@/constants/typography';
 import { Card } from '@/components/ui/Card';
 import { useTailorAuth } from '@/auth/TailorAuthContext';
 import { useBookings } from '@/hooks/useBookings';
+import { ADMIN_ENABLED } from '@/constants/admin';
 
 export default function TailorDashboardScreen() {
   const { tailor, logoutTailor } = useTailorAuth();
@@ -39,10 +40,14 @@ export default function TailorDashboardScreen() {
   );
 
   useEffect(() => {
-    if (!tailor) {
+    if (!ADMIN_ENABLED) {
+      router.replace('/(customer)');
+    } else if (!tailor) {
       router.replace('/penjahit');
     }
   }, [tailor]);
+
+  if (!ADMIN_ENABLED) return null;
 
   const handleLogout = () => {
     Alert.alert(

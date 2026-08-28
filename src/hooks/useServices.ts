@@ -1,99 +1,44 @@
 /**
  * Godabaya Tailor — Services Hook
+ *
+ * Data layanan/harga melalui backend REST bersama (server/index.js).
  */
 
 import { useCallback } from 'react';
-import { useDatabase } from '@/database/provider';
 import { Service } from '@/types';
+import { apiRequest } from '@/utils/api';
 
 export function useServices() {
-  const { db } = useDatabase();
-
   const getServices = useCallback(async (activeOnly = true): Promise<Service[]> => {
-    if (!db) return [];
-
-    const query = activeOnly
-      ? 'SELECT * FROM services WHERE is_active = 1 ORDER BY id ASC'
-      : 'SELECT * FROM services ORDER BY id ASC';
-
-    const results = await db.getAllAsync<{
-      id: number; name: string; category: string; price_start: number;
-      description: string; estimation: string; is_active: number; created_at: string;
-    }>(query);
-
-    return results.map((r) => ({
-      id: r.id,
-      name: r.name,
-      category: r.category,
-      priceStart: r.price_start,
-      description: r.description,
-      estimation: r.estimation,
-      isActive: r.is_active === 1,
-      createdAt: r.created_at,
-    }));
-  }, [db]);
+    const query = activeOnly ? '' : '?active=0';
+    const res = await apiRequest<{ services: Service[] }>(`/api/services${query}`);
+    return res.services ?? [];
+  }, []);
 
   const getServiceById = useCallback(async (id: number): Promise<Service | null> => {
-    if (!db) return null;
-
-    const result = await db.getFirstAsync<{
-      id: number; name: string; category: string; price_start: number;
-      description: string; estimation: string; is_active: number; created_at: string;
-    }>('SELECT * FROM services WHERE id = ?', [id]);
-
-    if (!result) return null;
-
-    return {
-      id: result.id,
-      name: result.name,
-      category: result.category,
-      priceStart: result.price_start,
-      description: result.description,
-      estimation: result.estimation,
-      isActive: result.is_active === 1,
-      createdAt: result.created_at,
-    };
-  }, [db]);
+    const res = await apiRequest<{ service: Service | null }>(`/api/services/${id}`);
+    return res.service;
+  }, []);
 
   const addService = useCallback(async (data: {
     name: string; category: string; priceStart: number; description: string; estimation: string;
   }): Promise<void> => {
-    if (!db) return;
-    await db.runAsync(
-      'INSERT INTO services (name, category, price_start, description, estimation) VALUES (?, ?, ?, ?, ?)',
-      [data.name, data.category, data.priceStart, data.description, data.estimation]
-    );
-  }, [db]);
+    await apiRequest('/api/services', { method: 'POST', role: 'tailor', body: data });
+  }, []);
 
   const updateService = useCallback(async (id: number, data: {
     name?: string; category?: string; priceStart?: number; description?: string; estimation?: string;
   }): Promise<void> => {
-    if (!db) return;
-
-    const fields: string[] = [];
-    const values: any[] = [];
-
-    if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
-    if (data.category !== undefined) { fields.push('category = ?'); values.push(data.category); }
-    if (data.priceStart !== undefined) { fields.push('price_start = ?'); values.push(data.priceStart); }
-    if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description); }
-    if (data.estimation !== undefined) { fields.push('estimation = ?'); values.push(data.estimation); }
-
-    if (fields.length === 0) return;
-    values.push(id);
-
-    await db.runAsync(`UPDATE services SET ${fields.join(', ')} WHERE id = ?`, values);
-  }, [db]);
+    await apiRequest(`/api/services/${id}`, { method: 'PUT', role: 'tailor', body: data });
+  }, []);
 
   const deleteService = useCallback(async (id: number): Promise<void> => {
-    if (!db) return;
-    await db.runAsync('UPDATE services SET is_active = 0 WHERE id = ?', [id]);
-  }, [db]);
+    await apiRequest(`/api/services/${id}`, { method: 'DELETE', role: 'tailor' });
+  }, []);
 
   const restoreService = useCallback(async (id: number): Promise<void> => {
-    if (!db) return;
-    await db.runAsync('UPDATE services SET is_active = 1 WHERE id = ?', [id]);
-  }, [db]);
+    await apiRequest(`/api/services/${id}/restore`, { method: 'POST', role: 'tailor' });
+  }, []);
 
   return { getServices, getServiceById, addService, updateService, deleteService, restoreService };
 }

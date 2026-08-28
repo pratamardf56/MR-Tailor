@@ -1,38 +1,33 @@
 /**
  * Godabaya Tailor — Settings Hook
+ *
+ * Data pengaturan bisnis melalui backend REST bersama (server/index.js).
  */
 
 import { useCallback } from 'react';
-import { useDatabase } from '@/database/provider';
+import { apiRequest } from '@/utils/api';
 
 export function useSettings() {
-  const { db } = useDatabase();
-
   const getSetting = useCallback(async (key: string): Promise<string> => {
-    if (!db) return '';
-    const result = await db.getFirstAsync<{ value: string }>(
-      'SELECT value FROM settings WHERE key = ?', [key]
-    );
-    return result?.value ?? '';
-  }, [db]);
+    try {
+      const res = await apiRequest<{ value: string }>(`/api/settings/${encodeURIComponent(key)}`);
+      return res.value ?? '';
+    } catch {
+      return '';
+    }
+  }, []);
 
   const updateSetting = useCallback(async (key: string, value: string): Promise<void> => {
-    if (!db) return;
-    await db.runAsync(
-      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-      [key, value]
-    );
-  }, [db]);
+    await apiRequest('/api/settings', { method: 'POST', body: { key, value } });
+  }, []);
 
   const getAllSettings = useCallback(async (): Promise<Record<string, string>> => {
-    if (!db) return {};
-    const results = await db.getAllAsync<{ key: string; value: string }>(
-      'SELECT * FROM settings'
-    );
-    const settings: Record<string, string> = {};
-    results.forEach((r) => { settings[r.key] = r.value; });
-    return settings;
-  }, [db]);
+    try {
+      return await apiRequest<Record<string, string>>('/api/settings');
+    } catch {
+      return {};
+    }
+  }, []);
 
   return { getSetting, updateSetting, getAllSettings };
 }

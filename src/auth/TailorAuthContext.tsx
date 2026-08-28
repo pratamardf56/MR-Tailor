@@ -1,21 +1,20 @@
 /**
  * Godabaya Tailor — Tailor (Admin) Auth Provider
  *
- * Akun penjahit terpisah dari customer: Username + PIN.
- * PIN di-hash (SHA-256 + salt). Session bersifat sementara (hanya
- * selama tab/browser terbuka); saat keluar atau menutup website,
- * penjahit harus login lagi.
+ * Akun penjahit terpisah dari customer: Username (nomor WhatsApp) + PIN.
+ * Autentikasi kini melalui backend REST bersama (server/index.js). Token
+ * sesi disimpan sementara (hanya selama tab/aplikasi terbuka); saat keluar
+ * atau menutup aplikasi, penjahit harus login lagi.
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { useDatabase } from '@/database/provider';
-import { hashPin, randomHex } from '@/utils/pin';
 import { getSession, saveSession, clearSession } from '@/utils/session';
+import { apiRequest, setToken } from '@/utils/api';
 
-const SESSION_KEY = 'session_tailor_id';
+const SESSION_KEY = 'session_tailor_token';
 export const TAILOR_PIN_PREFIX = 'godabaya-tailor-pin';
 
-// Akun penjahit default (pemegang: nomor WhatsApp + PIN), dibuat jika belum ada
+// Kredensial default penjahit (dibuat/di-seed oleh backend jika belum ada)
 export const DEFAULT_TAILOR = {
   username: '081214386602', // 0812-1438-6602 (diketik dengan atau tanpa tanda hubung)
   pin: '9999',
@@ -46,72 +45,28 @@ export function useTailorAuth() {
   return useContext(TailorAuthContext);
 }
 
-interface TailorRow {
-  id: number;
-  username: string;
-  pin_hash: string;
-  pin_salt: string;
-  name: string;
-  created_at: string;
-}
-
 export function TailorAuthProvider({ children }: { children: React.ReactNode }) {
-  const { db, isReady } = useDatabase();
   const [tailor, setTailor] = useState<TailorAccount | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const seedDefaultAccount = useCallback(async () => {
-    if (!db) return;
-    const username = DEFAULT_TAILOR.username;
-    const existing = await db.getFirstAsync<TailorRow>(
-      'SELECT * FROM tailor_accounts WHERE username = ?',
-      [username]
-    );
-    if (existing) {
-      const currentHash = await hashPin(DEFAULT_TAILOR.pin, existing.pin_salt, TAILOR_PIN_PREFIX);
-      if (currentHash !== existing.pin_hash) {
-        const salt = randomHex(16);
-        const hash = await hashPin(DEFAULT_TAILOR.pin, salt, TAILOR_PIN_PREFIX);
-        await db.runAsync(
-          'UPDATE tailor_accounts SET pin_hash = ?, pin_salt = ?, name = ? WHERE id = ?',
-          [hash, salt, DEFAULT_TAILOR.name, existing.id]
-        );
-      }
-    } else {
-      const salt = randomHex(16);
-      const hash = await hashPin(DEFAULT_TAILOR.pin, salt, TAILOR_PIN_PREFIX);
-      await db.runAsync(
-        'INSERT INTO tailor_accounts (username, pin_hash, pin_salt, name) VALUES (?, ?, ?, ?)',
-        [username, hash, salt, DEFAULT_TAILOR.name]
-      );
-    }
-    // Hapus akun default lama ('penjahit') agar hanya nomor pemegang yang berlaku
-    await db.runAsync('DELETE FROM tailor_accounts WHERE username = ?', ['penjahit']);
-  }, [db]);
-
-  // Pulihkan sesi penjahit (hanya berlaku selama tab/browser terbuka)
+  // Pulihkan sesi penjahit dari token tersimpan (selama tab/aplikasi terbuka)
   useEffect(() => {
     let active = true;
     async function restore() {
-      if (!db || !isReady) return;
       try {
-        await seedDefaultAccount();
-        // Bersihkan sisa sesi lama yang pernah tersimpan di database
-        await db.runAsync('DELETE FROM settings WHERE key = ?', [SESSION_KEY]);
-
-        const storedId = await getSession(SESSION_KEY);
-        if (!storedId) return;
-        const saved = await db.getFirstAsync<TailorRow>(
-          'SELECT * FROM tailor_accounts WHERE id = ?',
-          [parseInt(storedId, 10)]
-        );
-        if (active && saved) {
-          setTailor({ id: saved.id, username: saved.username, name: saved.name });
+        const storedToken = await getSession(SESSION_KEY);
+        if (!storedToken) return;
+        setToken('tailor', storedToken);
+        const res = await apiRequest<{ tailor: TailorAccount | null }>('/api/tailor/me', { role: 'tailor' });
+        if (active && res.tailor) {
+          setTailor(res.tailor);
         } else if (active) {
+          setToken('tailor', null);
           await clearSession(SESSION_KEY);
         }
-      } catch (error) {
-        console.error('Gagal memulihkan sesi penjahit:', error);
+      } catch {
+        setToken('tailor', null);
+        await clearSession(SESSION_KEY);
       } finally {
         if (active) setIsLoading(false);
       }
@@ -120,35 +75,30 @@ export function TailorAuthProvider({ children }: { children: React.ReactNode }) 
     return () => {
       active = false;
     };
-  }, [db, isReady, seedDefaultAccount]);
-
-  const persistSession = useCallback(async (id: number) => {
-    await saveSession(SESSION_KEY, String(id));
   }, []);
 
   const loginTailor = useCallback(async (username: string, pin: string): Promise<TailorAccount> => {
-    if (!db) throw new Error('Database tidak siap');
-    // Tolak format penulisan (tanda hubung/spasi) agar cocok dengan username tersimpan
+    // Bersihkan format penulisan (tanda hubung/spasi) agar cocok di backend
     const user = username.trim().replace(/[\s-]/g, '').toLowerCase();
     if (!user) throw new Error('Username harus diisi');
 
-    const row = await db.getFirstAsync<TailorRow>(
-      'SELECT * FROM tailor_accounts WHERE lower(username) = ?',
-      [user]
+    const res = await apiRequest<{ token: string; tailor: TailorAccount }>(
+      '/api/tailor/login',
+      { method: 'POST', body: { username: user, pin: pin.trim() } }
     );
-    if (!row) throw new Error('Akun penjahit tidak ditemukan.');
-
-    const hash = await hashPin(pin, row.pin_salt, TAILOR_PIN_PREFIX);
-    if (hash !== row.pin_hash) {
-      throw new Error('PIN salah.');
-    }
-
-    await persistSession(row.id);
-    setTailor({ id: row.id, username: row.username, name: row.name });
-    return { id: row.id, username: row.username, name: row.name };
-  }, [db, persistSession]);
+    setToken('tailor', res.token);
+    await saveSession(SESSION_KEY, res.token);
+    setTailor(res.tailor);
+    return res.tailor;
+  }, []);
 
   const logoutTailor = useCallback(async () => {
+    try {
+      await apiRequest('/api/tailor/logout', { method: 'POST', role: 'tailor' });
+    } catch {
+      // abaikan kegagalan jaringan saat logout
+    }
+    setToken('tailor', null);
     setTailor(null);
     await clearSession(SESSION_KEY);
   }, []);
