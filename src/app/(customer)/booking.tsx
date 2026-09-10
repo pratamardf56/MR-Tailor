@@ -1,9 +1,20 @@
 /**
- * Godabaya Tailor — Booking Form Screen
+ * MR-Tailor — Booking Form Screen (Simple)
+ *
+ * Form booking sederhana: pilih jenis layanan, isi data, submit.
  */
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Platform,
+  useWindowDimensions,
+} from 'react-native';
 import { Alert } from '@/utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -12,7 +23,6 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@/components/ui/DateTimePicker';
 import { Colors } from '@/constants/colors';
 import { Typography } from '@/constants/typography';
-import { ServiceCategories } from '@/constants/config';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useBookings } from '@/hooks/useBookings';
@@ -22,34 +32,41 @@ import { formatDateFull } from '@/utils/format';
 const DEFAULT_REQUESTED_DATE = new Date(Date.now() + 86400000 * 3);
 const MIN_BOOKING_DATE = new Date(Date.now() + 86400000);
 
+const SERVICE_TYPES = [
+  { id: 'permak-celana',  label: 'Permak Celana',       icon: 'cut-outline' as const },
+  { id: 'permak-baju',    label: 'Permak Baju / Kemeja', icon: 'shirt-outline' as const },
+  { id: 'jahit-celana',   label: 'Jahit Celana Baru',    icon: 'layers-outline' as const },
+  { id: 'jahit-kemeja',   label: 'Jahit Kemeja / Baju',  icon: 'construct-outline' as const },
+  { id: 'jahit-jas',      label: 'Jahit Jas & Blazer',   icon: 'diamond-outline' as const },
+  { id: 'jahit-gamis',    label: 'Jahit Gamis & Gaun',   icon: 'flower-outline' as const },
+  { id: 'seragam',        label: 'Jahit Seragam',        icon: 'people-outline' as const },
+  { id: 'lainnya',        label: 'Lainnya',              icon: 'ellipsis-horizontal-outline' as const },
+];
+
 export default function BookingScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
-  const {
-    preselectedService,
-    name: preName,
-    phone: prePhone,
-    date: preDate,
-  } = useLocalSearchParams<{ preselectedService?: string; name?: string; phone?: string; date?: string }>();
+  const { preselectedService, name: preName, phone: prePhone, date: preDate } =
+    useLocalSearchParams<{ preselectedService?: string; name?: string; phone?: string; date?: string }>();
+
   const { createBooking } = useBookings();
   const { customer } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  // Pilih jenis layanan
+  const [selectedService, setSelectedService] = useState<string>(SERVICE_TYPES[0].id);
+
   // Form state
-  const [name, setName] = useState(customer?.name ?? preName ?? '');
-  const [phone, setPhone] = useState(customer?.whatsapp ?? prePhone ?? '');
-  const [pin, setPin] = useState('');
-  const [service, setService] = useState(
-    preselectedService && ServiceCategories.includes(preselectedService as any)
-      ? preselectedService
-      : ServiceCategories[0]
-  );
-  const [prevPreselectedService, setPrevPreselectedService] = useState<string | undefined>(preselectedService);
+  const [name, setName]               = useState(customer?.name ?? preName ?? '');
+  const [phone, setPhone]             = useState(customer?.whatsapp ?? prePhone ?? '');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState<Date>(() => {
+  const [notes, setNotes]             = useState('');
+  const [imageUri, setImageUri]       = useState<string | null>(null);
+  const [errors, setErrors]           = useState<Record<string, string>>({});
+  const [date, setDate]               = useState<Date>(() => {
     if (preDate) {
       const parsed = new Date(preDate);
       if (!isNaN(parsed.getTime()) && parsed.getTime() >= MIN_BOOKING_DATE.getTime() - 86400000) {
@@ -58,89 +75,83 @@ export default function BookingScreen() {
     }
     return DEFAULT_REQUESTED_DATE;
   });
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  
-  // Errors
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  if (preselectedService && preselectedService !== prevPreselectedService) {
-    setPrevPreselectedService(preselectedService);
-    if (ServiceCategories.includes(preselectedService as any)) {
-      setService(preselectedService);
-    }
+  // Prefill dari auth
+  const [prefilledFor, setPrefilledFor] = useState<number | null>(customer?.id ?? null);
+  if (customer && customer.id !== prefilledFor) {
+    setPrefilledFor(customer.id);
+    if (!name.trim()) setName(customer.name);
+    if (!phone.trim()) setPhone(customer.whatsapp);
   }
+
+  // Handle preselectedService param (dari halaman harga)
+  useEffect(() => {
+    if (preselectedService) {
+      const match = SERVICE_TYPES.find(
+        (s) => s.label.toLowerCase().includes(preselectedService.toLowerCase()) ||
+               preselectedService.toLowerCase().includes(s.label.toLowerCase())
+      );
+      if (match) setSelectedService(match.id);
+    }
+  }, [preselectedService]);
+
+  const activeService = SERVICE_TYPES.find((s) => s.id === selectedService) ?? SERVICE_TYPES[0];
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    if (!name.trim()) newErrors.name = 'Nama harus diisi';
-    if (!phone.trim()) newErrors.phone = 'Nomor WhatsApp harus diisi';
-    if (!pin.trim() || pin.trim().length < 4 || pin.trim().length > 6 || !/^\d+$/.test(pin.trim())) {
-      newErrors.pin = 'PIN harus 4-6 angka';
-    }
-    if (!description.trim()) newErrors.description = 'Deskripsi pesanan harus diisi';
-    
+    if (!name.trim())        newErrors.name = 'Nama harus diisi';
+    if (!phone.trim())       newErrors.phone = 'Nomor WhatsApp harus diisi';
+    if (!description.trim()) newErrors.description = 'Detail pakaian harus diisi';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const pickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
-    if (permissionResult.granted === false) {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
       Alert.alert('Izin Ditolak', 'Aplikasi membutuhkan izin untuk mengakses galeri foto.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
       quality: 0.7,
       base64: Platform.OS === 'web',
     });
-
     if (!result.canceled) {
       const asset = result.assets[0];
       if (Platform.OS === 'web' && asset.base64) {
-        const mime = asset.mimeType || 'image/jpeg';
-        setImageUri(`data:${mime};base64,${asset.base64}`);
+        setImageUri(`data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`);
       } else {
         setImageUri(asset.uri);
       }
     }
   };
 
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || date;
+  const onDateChange = (_: any, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
-    setDate(currentDate);
+    if (selectedDate) setDate(selectedDate);
   };
 
   const handleSubmit = async () => {
     if (!validateForm()) {
-      Alert.alert('Error', 'Mohon lengkapi semua field yang wajib diisi dengan benar.');
+      Alert.alert('Form Belum Lengkap', 'Mohon lengkapi semua field yang wajib diisi.');
       return;
     }
-
     try {
       setLoading(true);
       const bookingCode = await createBooking({
-        customerId: customer?.id ?? null,
-        customerName: name.trim(),
-        customerPhone: phone.trim(),
-        pin: pin.trim(),
-        serviceType: service,
-        description: description.trim(),
-        requestedDate: date,
+        customerName:   name.trim(),
+        customerPhone:  phone.trim(),
+        serviceType:    activeService.label,
+        description:    `[${activeService.label}] ${description.trim()}`,
+        requestedDate:  date,
         referencePhoto: imageUri,
-        notes: notes.trim(),
+        notes:          notes.trim(),
       });
-      
-      // Navigate to success screen
       router.push({ pathname: '/booking-success', params: { bookingCode } });
     } catch (error: any) {
-      console.error('Failed to create booking:', error);
-      Alert.alert('Error', error.message || 'Gagal membuat pesanan. Silakan coba lagi.');
+      Alert.alert('Gagal Booking', error.message || 'Gagal membuat pesanan. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -148,592 +159,361 @@ export default function BookingScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Page Header */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.headerIconBox}>
-            <Ionicons name="cut-outline" size={20} color={Colors.primary} />
+            <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
           </View>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>BOOKING JAHITAN</Text>
-            <Text style={styles.subtitle}>Isi data pesanan Anda dengan lengkap agar kami dapat memproses kebutuhan jahitan Anda.</Text>
+          <View>
+            <Text style={styles.headerTitle}>BUAT PESANAN</Text>
+            <Text style={styles.headerSub}>Pilih layanan & isi data pesanan</Text>
           </View>
         </View>
         <TouchableOpacity onPress={() => router.replace('/(customer)')} style={styles.closeBtn} activeOpacity={0.7}>
-          <Ionicons name="close" size={20} color={Colors.text} />
+          <Ionicons name="close" size={22} color={Colors.text} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        <View style={isDesktop ? styles.desktopContainer : styles.mobileContainer}>
-          
-          {/* KOLOM KIRI — Form */}
-          <View style={isDesktop ? styles.leftColumn : styles.fullColumn}>
-            
-            {/* Card: Data Pesanan */}
-            <View style={[styles.formCard, isDesktop ? styles.formCardDesktop : styles.formCardMobile]}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="person-outline" size={18} color={Colors.primary} />
-                <Text style={styles.sectionTitle}>DATA PESANAN</Text>
-              </View>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' },
+        ]}
+      >
+        {/* ─── 1. Pilih Jenis Layanan ─── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionStep}>1</Text>
+            <Text style={styles.sectionTitle}>Pilih Jenis Layanan</Text>
+          </View>
 
-              <Input
-                label="Nama Lengkap"
-                placeholder="Masukkan nama lengkap"
-                value={name}
-                onChangeText={setName}
-                error={errors.name}
-                required
-              />
-              <Input
-                label="Nomor WhatsApp"
-                placeholder="08xxxxxxxxxx"
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                error={errors.phone}
-                required
-              />
-              <Text style={styles.helperText}>
-                <Ionicons name="information-circle-outline" size={12} color={Colors.textTertiary} />
-                {' '}Nomor ini digunakan untuk melihat pesanan Anda.
-              </Text>
-              
-              <Input
-                label="PIN"
-                placeholder="Masukkan PIN 4–6 digit"
-                value={pin}
-                onChangeText={setPin}
-                secureTextEntry
-                keyboardType="numeric"
-                maxLength={6}
-                error={errors.pin}
-                required
-              />
-              <Text style={styles.helperText}>
-                <Ionicons name="lock-closed-outline" size={12} color={Colors.textTertiary} />
-                {' '}PIN digunakan untuk mengakses pesanan Anda.
-              </Text>
-
-              <View style={styles.divider} />
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Jenis Layanan <Text style={styles.required}>*</Text></Text>
-                <View style={styles.serviceChips}>
-                  {ServiceCategories.map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[styles.serviceChip, service === cat && styles.serviceChipActive]}
-                      onPress={() => setService(cat)}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={[styles.serviceChipText, service === cat && styles.serviceChipTextActive]}>
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Tanggal Pengambilan / Selesai <Text style={styles.required}>*</Text></Text>
-                <TouchableOpacity 
-                  style={styles.dateSelector} 
-                  onPress={() => setShowDatePicker(true)}
-                  activeOpacity={0.8}
+          <View style={styles.serviceGrid}>
+            {SERVICE_TYPES.map((svc) => {
+              const active = selectedService === svc.id;
+              return (
+                <TouchableOpacity
+                  key={svc.id}
+                  style={[styles.servicePill, active && styles.servicePillActive]}
+                  onPress={() => setSelectedService(svc.id)}
+                  activeOpacity={0.75}
                 >
-                  <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
-                  <Text style={styles.dateText}>{formatDateFull(date)}</Text>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} style={{ marginLeft: 'auto' }} />
-                </TouchableOpacity>
-                
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={date}
-                    mode="date"
-                    display="default"
-                    minimumDate={MIN_BOOKING_DATE}
-                    onChange={onDateChange}
+                  <Ionicons
+                    name={svc.icon}
+                    size={16}
+                    color={active ? Colors.textOnPrimary : Colors.primary}
                   />
-                )}
-              </View>
-
-              <Input
-                label="Detail Pakaian"
-                placeholder="Contoh: Kemeja lengan panjang, bahan katun, ukuran L..."
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={4}
-                error={errors.description}
-                required
-              />
-
-              <Input
-                label="Catatan Tambahan"
-                placeholder="Tambahkan permintaan khusus jika ada."
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={2}
-              />
-
-              {/* Foto Referensi */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Foto Referensi <Text style={styles.optional}>(Opsional)</Text></Text>
-                <TouchableOpacity style={styles.photoPickerBtn} onPress={pickImage} activeOpacity={0.8}>
-                  {imageUri ? (
-                    <Image source={{ uri: imageUri }} style={styles.photoPreview} />
-                  ) : (
-                    <View style={styles.photoPlaceholder}>
-                      <Ionicons name="camera-outline" size={28} color={Colors.textTertiary} />
-                      <Text style={styles.photoPlaceholderText}>Tap untuk memilih foto</Text>
-                    </View>
-                  )}
+                  <Text style={[styles.servicePillText, active && styles.servicePillTextActive]}>
+                    {svc.label}
+                  </Text>
                 </TouchableOpacity>
-                {imageUri && (
-                  <TouchableOpacity onPress={() => setImageUri(null)} style={styles.removePhotoBtn}>
-                    <Ionicons name="trash-outline" size={14} color={Colors.error} />
-                    <Text style={styles.removePhotoText}>Hapus Foto</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
+              );
+            })}
           </View>
-
-          {/* KOLOM KANAN — Ringkasan */}
-          <View style={isDesktop ? styles.rightColumn : styles.fullColumn}>
-            
-            <View style={[styles.summaryWrapper, isDesktop ? styles.summaryWrapperDesktop : styles.summaryWrapperMobile]}>
-              {/* Ringkasan Pesanan */}
-              <View style={styles.summaryCard}>
-                <View style={styles.cardHeader}>
-                  <Ionicons name="clipboard-outline" size={18} color={Colors.primary} />
-                  <Text style={styles.sectionTitle}>RINGKASAN PESANAN</Text>
-                </View>
-                
-                {name || phone || description ? (
-                  <View style={styles.summaryContent}>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Nama</Text>
-                      <Text style={styles.summaryValue}>{name || '-'}</Text>
-                    </View>
-                    <View style={styles.summaryDivider} />
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>WhatsApp</Text>
-                      <Text style={styles.summaryValue}>{phone || '-'}</Text>
-                    </View>
-                    <View style={styles.summaryDivider} />
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Layanan</Text>
-                      <Text style={styles.summaryValue}>{service}</Text>
-                    </View>
-                    <View style={styles.summaryDivider} />
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Tanggal</Text>
-                      <Text style={styles.summaryValue}>{formatDateFull(date)}</Text>
-                    </View>
-                    {description ? (
-                      <>
-                        <View style={styles.summaryDivider} />
-                        <View style={styles.summaryRow}>
-                          <Text style={styles.summaryLabel}>Detail</Text>
-                          <Text style={[styles.summaryValue, { flex: 2 }]} numberOfLines={3}>{description}</Text>
-                        </View>
-                      </>
-                    ) : null}
-                  </View>
-                ) : (
-                  <View style={styles.emptySummaryBox}>
-                    <Ionicons name="clipboard-outline" size={28} color={Colors.textTertiary} />
-                    <Text style={styles.emptySummary}>Ringkasan pesanan akan muncul setelah Anda mengisi form.</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Data Aman */}
-              <View style={styles.privacyCard}>
-                <View style={styles.privacyIconBox}>
-                  <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
-                </View>
-                <View style={styles.privacyTextContent}>
-                  <Text style={styles.privacyTitle}>DATA ANDA AMAN 🔒</Text>
-                  <Text style={styles.privacyDesc}>Data pesanan Anda hanya dapat diakses menggunakan informasi yang sesuai.</Text>
-                </View>
-              </View>
-            </View>
-
-          </View>
-
         </View>
 
-        {/* Submit Button */}
-        <View style={[styles.submitContainer, isDesktop && styles.desktopSubmitContainer]}>
-          <Button 
-            title="KIRIM PESANAN" 
-            onPress={handleSubmit} 
+        {/* ─── 2. Data Pemesan ─── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionStep}>2</Text>
+            <Text style={styles.sectionTitle}>Data Pemesan</Text>
+          </View>
+
+          <Input
+            label="Nama Lengkap"
+            placeholder="Masukkan nama lengkap"
+            value={name}
+            onChangeText={setName}
+            error={errors.name}
+            required
+          />
+
+          <Input
+            label="Nomor WhatsApp"
+            placeholder="08xxxxxxxxxx"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            error={errors.phone}
+            required
+          />
+          <Text style={styles.helperText}>
+            Nomor ini digunakan penjahit untuk menghubungi Anda.
+          </Text>
+
+          {/* Tanggal */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Tanggal Permintaan Selesai <Text style={styles.required}>*</Text>
+            </Text>
+            <TouchableOpacity
+              style={styles.dateRow}
+              onPress={() => setShowDatePicker(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar-outline" size={19} color={Colors.primary} />
+              <Text style={styles.dateText}>{formatDateFull(date)}</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
+            {showDatePicker && (
+              <DateTimePicker
+                value={date}
+                mode="date"
+                display="default"
+                minimumDate={MIN_BOOKING_DATE}
+                onChange={onDateChange}
+              />
+            )}
+          </View>
+        </View>
+
+        {/* ─── 3. Detail Pakaian ─── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionStep}>3</Text>
+            <Text style={styles.sectionTitle}>Detail Pakaian</Text>
+          </View>
+
+          <Input
+            label="Deskripsi Model & Ukuran"
+            placeholder={`Contoh: ${activeService.label} - ukuran pinggang 32, potong 3cm dari bawah, bahan katun...`}
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={4}
+            error={errors.description}
+            required
+          />
+
+          <Input
+            label="Catatan Khusus (Opsional)"
+            placeholder="Permintaan khusus, warna benang, atau informasi tambahan lainnya."
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            numberOfLines={2}
+          />
+
+          {/* Upload Foto */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Foto Referensi <Text style={styles.optional}>(Opsional)</Text>
+            </Text>
+            <TouchableOpacity style={styles.photoPicker} onPress={pickImage} activeOpacity={0.8}>
+              {imageUri ? (
+                <Image source={{ uri: imageUri }} style={styles.photoPreview} />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <Ionicons name="camera-outline" size={28} color={Colors.textTertiary} />
+                  <Text style={styles.photoPlaceholderText}>Tap untuk upload foto contoh pakaian</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            {imageUri && (
+              <TouchableOpacity onPress={() => setImageUri(null)} style={styles.removePhoto}>
+                <Ionicons name="trash-outline" size={13} color={Colors.error} />
+                <Text style={styles.removePhotoText}>Hapus Foto</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* ─── Submit ─── */}
+        <View style={styles.submitSection}>
+          <Button
+            title={loading ? 'MEMPROSES...' : 'KIRIM PESANAN'}
+            onPress={handleSubmit}
             loading={loading}
-            fullWidth
-            size="lg"
             style={styles.submitBtn}
           />
+          <Text style={styles.submitNote}>
+            <Ionicons name="shield-checkmark-outline" size={12} color={Colors.textTertiary} />
+            {' '}Pesanan masuk langsung ke dashboard penjahit untuk dikonfirmasi.
+          </Text>
         </View>
 
+        <View style={{ height: 32 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ──────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,  // Cream
-  },
+  safeArea: { flex: 1, backgroundColor: Colors.background },
 
-  // Header
+  /* Header */
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
-    zIndex: 10,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    flex: 1,
-  },
-  closeBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   headerIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    backgroundColor: 'rgba(74,46,34,0.08)',
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: 'rgba(74, 46, 34, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    flexShrink: 0,
-    marginTop: 2,
   },
-  headerText: {
-    flex: 1,
-  },
-  title: {
+  headerTitle: {
     ...Typography.h4,
     color: Colors.primary,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
-  subtitle: {
-    ...Typography.bodySm,
-    color: Colors.textSecondary,
-    marginTop: 3,
-    lineHeight: 18,
-  },
+  headerSub: { ...Typography.caption, color: Colors.textSecondary, fontSize: 11 },
+  closeBtn: { padding: 6 },
 
-  scrollContent: {
-    paddingBottom: 40,
-  },
-  desktopContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    gap: 24,
-    maxWidth: 1200,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  mobileContainer: {
-    flexDirection: 'column',
-    paddingTop: 4,
-  },
-  leftColumn: {
-    flex: 2,
-  },
-  rightColumn: {
-    flex: 1,
-  },
-  fullColumn: {
-    width: '100%',
-  },
+  /* Scroll */
+  scrollContent: { paddingHorizontal: 16, paddingTop: 20 },
 
-  // Form Card
-  formCard: {
+  /* Section */
+  section: {
     backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: Colors.borderLight,
     shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  formCardDesktop: {
-    borderRadius: 20,
-    padding: 24,
-    marginTop: 0,
-  },
-  formCardMobile: {
-    borderRadius: 0,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 20,
-    marginTop: 0,
-  },
-
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 20,
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  sectionStep: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primary,
+    color: Colors.textOnPrimary,
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 26,
+    overflow: 'hidden',
   },
   sectionTitle: {
     ...Typography.bodyMedium,
     color: Colors.primary,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '700',
   },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.borderLight,
-    marginVertical: 16,
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  label: {
-    ...Typography.label,
-    color: Colors.text,
-    marginBottom: 8,
-    fontWeight: '600',
-  },
-  required: {
-    color: Colors.error,
-  },
-  optional: {
-    color: Colors.textTertiary,
-    fontWeight: '400',
-    fontSize: 12,
-  },
-  helperText: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-    marginTop: -8,
-    marginBottom: 14,
-    lineHeight: 16,
-  },
-  serviceChips: {
+
+  /* Service Pills */
+  serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  servicePill: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  serviceChip: {
-    paddingHorizontal: 14,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
     paddingVertical: 9,
-    borderRadius: 20,
-    backgroundColor: Colors.surface,
+    borderRadius: 10,
+    backgroundColor: Colors.backgroundAlt,
     borderWidth: 1.5,
     borderColor: Colors.borderLight,
   },
-  serviceChipActive: {
+  servicePillActive: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
-  serviceChipText: {
-    ...Typography.bodySm,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
-  serviceChipTextActive: {
-    color: Colors.textOnPrimary,
+  servicePillText: {
+    ...Typography.caption,
+    color: Colors.text,
+    fontSize: 12,
     fontWeight: '600',
   },
-  dateSelector: {
+  servicePillTextActive: { color: Colors.textOnPrimary },
+
+  /* Form helpers */
+  helperText: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
+    fontSize: 11,
+    marginTop: -8,
+    marginBottom: 12,
+    paddingHorizontal: 2,
+  },
+  inputGroup: { marginBottom: 14, gap: 6 },
+  label: {
+    ...Typography.label,
+    color: Colors.text,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  required: { color: Colors.error },
+  optional: { color: Colors.textTertiary, fontWeight: '400' },
+  dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    gap: 10,
     borderWidth: 1.5,
     borderColor: Colors.border,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    gap: 10,
+    backgroundColor: Colors.surfaceElevated,
   },
   dateText: {
-    ...Typography.body,
+    ...Typography.bodyMedium,
     color: Colors.text,
+    fontSize: 14,
     flex: 1,
   },
 
-  // Photo picker
-  photoPickerBtn: {
-    borderRadius: 12,
+  /* Photo */
+  photoPicker: {
     borderWidth: 1.5,
     borderColor: Colors.border,
+    borderRadius: 12,
     borderStyle: 'dashed',
     overflow: 'hidden',
-    minHeight: 110,
-  },
-  photoPreview: {
-    width: '100%',
-    height: 160,
-    resizeMode: 'cover',
-  },
-  photoPlaceholder: {
-    flex: 1,
-    minHeight: 110,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minHeight: 100,
     backgroundColor: Colors.backgroundAlt,
+  },
+  photoPreview: { width: '100%', height: 160, resizeMode: 'cover' },
+  photoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 28,
     gap: 8,
   },
   photoPlaceholderText: {
-    ...Typography.bodySm,
+    ...Typography.caption,
     color: Colors.textTertiary,
+    fontSize: 12,
   },
-  removePhotoBtn: {
+  removePhoto: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    alignSelf: 'flex-end',
+    gap: 4,
+    marginTop: 6,
+    paddingLeft: 2,
   },
   removePhotoText: {
     ...Typography.caption,
     color: Colors.error,
-  },
-
-  // Summary
-  summaryWrapper: {},
-  summaryWrapperDesktop: {
-    paddingTop: 0,
-    gap: 16,
-  },
-  summaryWrapperMobile: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    gap: 14,
-  },
-  summaryCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  summaryContent: {
-    gap: 0,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 10,
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: Colors.borderLight,
-  },
-  summaryLabel: {
-    ...Typography.bodySm,
-    color: Colors.textSecondary,
-    width: 75,
-    flexShrink: 0,
-  },
-  summaryValue: {
-    ...Typography.bodySm,
-    color: Colors.text,
-    flex: 1,
+    fontSize: 11,
     fontWeight: '600',
-    textAlign: 'right',
-  },
-  emptySummaryBox: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    gap: 10,
-  },
-  emptySummary: {
-    ...Typography.bodySm,
-    color: Colors.textTertiary,
-    fontStyle: 'italic',
-    textAlign: 'center',
-  },
-  privacyCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.backgroundAlt,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    gap: 12,
-  },
-  privacyIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(74,46,34,0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
-  },
-  privacyTextContent: {
-    flex: 1,
-  },
-  privacyTitle: {
-    ...Typography.bodySm,
-    fontWeight: '700',
-    color: Colors.primary,
-    marginBottom: 3,
-  },
-  privacyDesc: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    lineHeight: 16,
   },
 
-  // Submit
-  submitContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 12,
-  },
-  desktopSubmitContainer: {
-    maxWidth: 1200,
-    alignSelf: 'center',
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-  },
-  submitBtn: {
-    borderRadius: 14,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
+  /* Submit */
+  submitSection: { gap: 10, marginBottom: 8 },
+  submitBtn: { borderRadius: 14 },
+  submitNote: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
+    fontSize: 11,
+    textAlign: 'center',
   },
 });

@@ -14,7 +14,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://GANTI-DENGAN-DOMAIN-SERVER"
+        "EXPO_PUBLIC_API_URL": "http://192.168.201.72:3001"
       }
     },
     "production": {

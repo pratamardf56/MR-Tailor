@@ -1,7 +1,7 @@
 /**
  * Godabaya Tailor — Reset Akun
  *
- * Menghapus semua akun customer (nomor WhatsApp + PIN) melalui backend
+ * Menghapus semua akun customer (email + password) melalui backend
  * REST bersama (server/index.js). Pesanan, portofolio, harga, dan
  * pengaturan bisnis tetap tersimpan. Akun admin penjahit tidak dihapus.
  */

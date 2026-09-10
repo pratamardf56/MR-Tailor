@@ -50,7 +50,7 @@ export default function HomeScreen() {
   const heroHeight = isDesktop ? 460 : Math.min(Math.max(height * 0.48, 300), 440);
 
   const goBooking = () => router.push('/(customer)/booking');
-  const goCekPesanan = () => router.push('/(customer)/cek-pesanan');
+  const goCekPesanan = () => router.push('/(customer)/pesanan');
   const scrollTop = () => scrollViewRef.current?.scrollTo({ y: 0, animated: true });
 
   const handleNav = (idx: number) => {
@@ -91,20 +91,33 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {isDesktop ? (
-              <View style={styles.navDesktop}>
-                {NavMenu.map((item, idx) => (
-                  <TouchableOpacity key={idx} onPress={() => handleNav(idx)} activeOpacity={0.7} style={styles.navLink}>
-                    <Text style={[styles.navLinkText, idx === 0 && styles.navLinkTextActive]}>{item.label}</Text>
-                    {idx === 0 && <View style={styles.navActiveUnderline} />}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : (
-              <TouchableOpacity onPress={() => setMenuOpen(true)} activeOpacity={0.7} style={styles.hamburgerBtn}>
-                <Ionicons name="menu" size={22} color="#FFFFFF" />
+            <View style={styles.navRight}>
+              {isDesktop && (
+                <View style={styles.navDesktop}>
+                  {NavMenu.map((item, idx) => (
+                    <TouchableOpacity key={idx} onPress={() => handleNav(idx)} activeOpacity={0.7} style={styles.navLink}>
+                      <Text style={[styles.navLinkText, idx === 0 && styles.navLinkTextActive]}>{item.label}</Text>
+                      {idx === 0 && <View style={styles.navActiveUnderline} />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Ikon Keranjang / Lihat Pesanan */}
+              <TouchableOpacity
+                onPress={goCekPesanan}
+                activeOpacity={0.75}
+                style={styles.cartBtn}
+              >
+                <Ionicons name="bag-handle-outline" size={22} color="#FFFFFF" />
               </TouchableOpacity>
-            )}
+
+              {!isDesktop && (
+                <TouchableOpacity onPress={() => setMenuOpen(true)} activeOpacity={0.7} style={styles.hamburgerBtn}>
+                  <Ionicons name="menu" size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {/* ── HERO CONTENT ── */}
@@ -196,12 +209,6 @@ export default function HomeScreen() {
         {/* ═══════════════ FOOTER ═══════════════ */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>© 2026 Godabaya Tailor. All rights reserved.</Text>
-          {ADMIN_ENABLED && (
-            <TouchableOpacity onPress={() => router.push('/penjahit')} activeOpacity={0.7} style={styles.adminLink}>
-              <Ionicons name="lock-closed-outline" size={11} color="rgba(255,255,255,0.45)" />
-              <Text style={styles.adminLinkText}>Akses Admin / Penjahit</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </ScrollView>
 
@@ -333,9 +340,24 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'transparent',
+  },
+  navRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  cartBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
 
   /* ─── HERO CONTENT ─────────────────────────────────── */

@@ -36,7 +36,7 @@ export default function TailorDashboardScreen() {
           style: 'destructive',
           onPress: async () => {
             await logoutTailor();
-            router.replace('/penjahit');
+            router.replace('/login');
           },
         },
       ]

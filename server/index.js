@@ -28,13 +28,19 @@ const ALLOW_ALL_ORIGINS = ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includ
 
 // Kredensial admin penjahit (dari env agar tidak hardcode di produksi).
 // Ganti ADMIN_PIN dengan PIN kuat sebelum go-public.
-const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || '081214386602').replace(/[\s-]/g, '');
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').replace(/[\s-]/g, '');
 const ADMIN_PIN = String(process.env.ADMIN_PIN || '9999');
 const ADMIN_NAME = String(process.env.ADMIN_NAME || 'Penjahit');
 
 // Rate limit login (anti brute-force): maks percobaan per window per IP.
 const LOGIN_MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS) || 8;
 const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS) || 15 * 60 * 1000; // 15 menit
+
+// Umur maksimal sesi (hari). Sesi lebih tua dianggap kedaluwarsa.
+const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS) || 30;
+
+// Panjang minimal password akun customer.
+const MIN_PASSWORD_LENGTH = 6;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -58,8 +64,11 @@ CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   whatsapp TEXT NOT NULL UNIQUE,
-  pin_hash TEXT NOT NULL,
-  pin_salt TEXT NOT NULL,
+  pin_hash TEXT NOT NULL DEFAULT '',
+  pin_salt TEXT NOT NULL DEFAULT '',
+  email TEXT,
+  password_hash TEXT,
+  password_salt TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -153,6 +162,27 @@ try {
   // sudah ada
 }
 
+// Migrasi additive akun customer (email + password).
+// Data lama (whatsapp + pin_hash/pin_salt) TIDAK dihapus agar booking lama tetap utuh.
+for (const sql of [
+  'ALTER TABLE customers ADD COLUMN email TEXT;',
+  'ALTER TABLE customers ADD COLUMN password_hash TEXT;',
+  'ALTER TABLE customers ADD COLUMN password_salt TEXT;',
+]) {
+  try {
+    db.exec(sql);
+  } catch {
+    // kolom sudah ada
+  }
+}
+
+// Email unik (case-insensitive), tetapi customer lama tanpa email tetap diizinkan.
+try {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email ON customers (lower(email)) WHERE email IS NOT NULL;');
+} catch {
+  // index sudah ada / tidak didukung
+}
+
 db.exec(SEED_SERVICES_SQL);
 db.exec(SEED_SETTINGS_SQL);
 
@@ -179,6 +209,10 @@ db.exec(SEED_SETTINGS_SQL);
       .run(DEFAULT_TAILOR.username, hashPin(DEFAULT_TAILOR.pin, salt, PIN_PREFIX), salt, DEFAULT_TAILOR.name);
   }
   db.prepare('DELETE FROM tailor_accounts WHERE username = ?').run('penjahit');
+  // Migrasi username lama -> hapus jika sudah diganti via .env (mis. 081214386602 -> admin)
+  if (DEFAULT_TAILOR.username !== '081214386602') {
+    db.prepare('DELETE FROM tailor_accounts WHERE username = ?').run('081214386602');
+  }
 })();
 
 // ============ Helpers ============
@@ -188,6 +222,32 @@ function run(sql, params) { return db.prepare(sql).run(...(params || [])); }
 
 function hashPin(pin, salt, prefix) {
   return crypto.createHash('sha256').update(`${prefix}:${salt}:${pin.trim()}`).digest('hex');
+}
+
+// ---- Password akun customer (email + password) ----
+// Disimpan sebagai scrypt hash + salt acak. Password asli tidak pernah disimpan.
+function hashPassword(password, salt) {
+  return crypto.scryptSync(String(password), String(salt), 64).toString('hex');
+}
+
+function verifyPassword(password, salt, expectedHash) {
+  if (!salt || !expectedHash) return false;
+  const actual = Buffer.from(hashPassword(password, salt), 'hex');
+  const expected = Buffer.from(String(expectedHash), 'hex');
+  if (actual.length !== expected.length) return false;
+  return crypto.timingSafeEqual(actual, expected);
+}
+
+function newSalt() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
 }
 
 function normalizeWa(wa) { return String(wa || '').replace(/\D/g, ''); }
@@ -261,7 +321,14 @@ function rowToNotification(r) {
 
 function rowToCustomer(r) {
   if (!r) return null;
-  return { id: r.id, name: r.name, whatsapp: r.whatsapp, createdAt: r.created_at };
+  // Password/PIN tidak pernah dikirim ke frontend.
+  return {
+    id: r.id,
+    name: r.name,
+    email: r.email ?? null,
+    whatsapp: r.whatsapp,
+    createdAt: r.created_at,
+  };
 }
 
 // ============ HTTP ============
@@ -352,6 +419,36 @@ function requireRole(req, res, role) {
     send(res, 401, { error: 'Akses ditolak. Silakan login terlebih dahulu.' });
     return null;
   }
+  // Sesi kedaluwarsa → hapus dan tolak.
+  const expired = get(
+    "SELECT 1 AS x FROM sessions WHERE token = ? AND created_at <= datetime('now', ?)",
+    [token, `-${SESSION_TTL_DAYS} days`]
+  );
+  if (expired) {
+    run('DELETE FROM sessions WHERE token = ?', [token]);
+    send(res, 401, { error: 'Sesi berakhir. Silakan login kembali.' });
+    return null;
+  }
+  return { token, session: s };
+}
+
+/**
+ * Varian requireRole tanpa mengirim respons (untuk endpoint yang menerima
+ * dua peran sekaligus, mis. customer ATAU tailor).
+ */
+function tryRole(req, role) {
+  const token = bearerToken(req);
+  if (!token) return null;
+  const s = get('SELECT * FROM sessions WHERE token = ?', [token]);
+  if (!s || s.role !== role) return null;
+  const expired = get(
+    "SELECT 1 AS x FROM sessions WHERE token = ? AND created_at <= datetime('now', ?)",
+    [token, `-${SESSION_TTL_DAYS} days`]
+  );
+  if (expired) {
+    run('DELETE FROM sessions WHERE token = ?', [token]);
+    return null;
+  }
   return { token, session: s };
 }
 
@@ -359,6 +456,24 @@ function createSession(role, refId) {
   const token = newToken();
   run('INSERT INTO sessions (token, role, ref_id) VALUES (?, ?, ?)', [token, role, refId]);
   return token;
+}
+
+/**
+ * Hubungkan booking lama tanpa customer_id ke akun ini berdasarkan nomor WA.
+ * Dipakai saat login/registrasi oleh admin agar data lama tetap terlihat.
+ */
+function linkLegacyBookings(customerId, whatsapp) {
+  const variants = waVariants(whatsapp);
+  if (variants.length === 0) return;
+  run(
+    `UPDATE bookings SET customer_id = ? WHERE customer_id IS NULL AND customer_phone IN (${variants.map(() => '?').join(', ')})`,
+    [customerId, ...variants]
+  );
+}
+
+/** Ambil customer berdasarkan email (case-insensitive). */
+function findCustomerByEmail(email) {
+  return get('SELECT * FROM customers WHERE lower(email) = ?', [normalizeEmail(email)]);
 }
 
 // ============ Server ============
@@ -391,64 +506,159 @@ const server = http.createServer(async (req, res) => {
     const body = ['POST', 'PUT'].includes(method) ? await readBody(req) : {};
 
     // ---------- Customer auth ----------
+    // Registrasi mandiri — publik bisa daftar sendiri dengan email berbeda
     if (method === 'POST' && parts[1] === 'customer' && parts[2] === 'register') {
+      if (!checkLoginRate(req)) {
+        return send(res, 429, { error: 'Terlalu banyak percobaan. Coba lagi nanti.' });
+      }
       const name = String(body.name || '').trim();
-      const wa = normalizeWa(body.whatsapp);
-      const pin = String(body.pin || '').trim();
-      if (!name || !wa || !/^\d{4,6}$/.test(pin)) {
-        return send(res, 400, { error: 'Data tidak lengkap (nama, nomor WhatsApp, PIN 4-6 angka).' });
+      const email = normalizeEmail(body.email);
+      const wa = normalizeWa(body.whatsapp || body.phone || '');
+      const password = String(body.password || '');
+      if (!name) return send(res, 400, { error: 'Nama wajib diisi.' });
+      if (!isValidEmail(email)) return send(res, 400, { error: 'Format email tidak valid.' });
+      if (!wa) return send(res, 400, { error: 'Nomor WhatsApp wajib diisi.' });
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        return send(res, 400, { error: `Password minimal ${MIN_PASSWORD_LENGTH} karakter.` });
+      }
+      if (findCustomerByEmail(email)) {
+        return send(res, 400, { error: 'Email sudah terdaftar. Silakan login.' });
       }
       const variants = waVariants(wa);
-      const existing = get(
-        `SELECT id FROM customers WHERE whatsapp IN (${variants.map(() => '?').join(', ')})`,
-        variants
-      );
-      if (existing) return send(res, 400, { error: 'Nomor WhatsApp sudah terdaftar. Silakan masuk.' });
-
-      const salt = crypto.randomBytes(16).toString('hex');
+      const existingWa = get(`SELECT * FROM customers WHERE whatsapp IN (${variants.map(() => '?').join(', ')})`, variants);
+      if (existingWa) {
+        return send(res, 400, { error: 'Nomor WhatsApp sudah dipakai akun lain.' });
+      }
+      const salt = newSalt();
+      const hash = hashPassword(password, salt);
       const result = run(
-        'INSERT INTO customers (name, whatsapp, pin_hash, pin_salt) VALUES (?, ?, ?, ?)',
-        [name, wa, hashPin(pin, salt, 'godabaya-customer-pin'), salt]
+        'INSERT INTO customers (name, whatsapp, email, password_hash, password_salt, pin_hash, pin_salt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [name, wa, email, hash, salt, '', '']
       );
       const id = Number(result.lastInsertRowid);
-
-      // Link booking lama tanpa akun (08xx vs 628xx)
-      if (variants.length > 0) {
-        run(
-          `UPDATE bookings SET customer_id = ? WHERE customer_id IS NULL AND customer_phone IN (${variants.map(() => '?').join(', ')})`,
-          [id, ...variants]
-        );
-      }
-
+      linkLegacyBookings(id, wa);
+      resetLoginRate(req);
       const token = createSession('customer', id);
-      return send(res, 201, { token, customer: rowToCustomer(get('SELECT * FROM customers WHERE id = ?', [id])) });
+      const row = get('SELECT * FROM customers WHERE id = ?', [id]);
+      return send(res, 201, { token, customer: rowToCustomer(row) });
     }
 
+    // Login customer: email + password.
     if (method === 'POST' && parts[1] === 'customer' && parts[2] === 'login') {
       if (!checkLoginRate(req)) {
         return send(res, 429, { error: 'Terlalu banyak percobaan login. Coba lagi nanti.' });
       }
-      const wa = normalizeWa(body.whatsapp);
-      const pin = String(body.pin || '').trim();
-      if (!wa) return send(res, 400, { error: 'Nomor WhatsApp harus diisi' });
-      const variants = waVariants(wa);
-      const row = get(
-        `SELECT * FROM customers WHERE whatsapp IN (${variants.map(() => '?').join(', ')})`,
-        variants
-      );
-      if (!row) return send(res, 400, { error: 'Akun tidak ditemukan. Silakan daftar terlebih dahulu.' });
-      if (hashPin(pin, row.pin_salt, 'godabaya-customer-pin') !== row.pin_hash) {
-        return send(res, 400, { error: 'PIN salah.' });
+      const email = normalizeEmail(body.email ?? body.username);
+      const password = String(body.password ?? '');
+      if (!email || !password) {
+        return send(res, 400, { error: 'Email dan password harus diisi.' });
       }
-      resetLoginRate(req);
-      if (variants.length > 0) {
-        run(
-          `UPDATE bookings SET customer_id = ? WHERE customer_id IS NULL AND customer_phone IN (${variants.map(() => '?').join(', ')})`,
-          [row.id, ...variants]
+
+      let row = findCustomerByEmail(email);
+      // Auto-registrasi: jika email belum ada, buat akun otomatis langsung dari halaman login
+      if (!row) {
+        if (password.length < MIN_PASSWORD_LENGTH) {
+          return send(res, 400, { error: `Password minimal ${MIN_PASSWORD_LENGTH} karakter.` });
+        }
+        // Nama dari email, WA dummy unik (bisa diubah nanti di profil)
+        const baseName = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ').trim() || 'Customer';
+        const name = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+        let wa;
+        for (let i = 0; i < 5; i++) {
+          wa = '08' + String(Date.now()).slice(-8) + String(Math.floor(Math.random() * 90) + 10);
+          const dup = get('SELECT id FROM customers WHERE whatsapp = ?', [wa]);
+          if (!dup) break;
+        }
+        const salt = newSalt();
+        const hash = hashPassword(password, salt);
+        const result = run(
+          'INSERT INTO customers (name, whatsapp, email, password_hash, password_salt, pin_hash, pin_salt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [name, wa, email, hash, salt, '', '']
         );
+        const id = Number(result.lastInsertRowid);
+        linkLegacyBookings(id, wa);
+        resetLoginRate(req);
+        const token = createSession('customer', id);
+        const created = get('SELECT * FROM customers WHERE id = ?', [id]);
+        return send(res, 201, { token, customer: rowToCustomer(created), autoRegistered: true });
       }
+      if (!row.password_hash || !row.password_salt) {
+        return send(res, 400, { error: 'Akun belum memiliki password. Hubungi penjahit.' });
+      }
+      if (!verifyPassword(password, row.password_salt, row.password_hash)) {
+        return send(res, 400, { error: 'Email atau password salah.' });
+      }
+
+      resetLoginRate(req);
+      linkLegacyBookings(row.id, row.whatsapp);
       const token = createSession('customer', row.id);
       return send(res, 200, { token, customer: rowToCustomer(row) });
+    }
+
+    // Unified login (admin or customer)
+    if (method === 'POST' && parts[1] === 'login' && parts.length === 2) {
+      if (!checkLoginRate(req)) {
+        return send(res, 429, { error: 'Terlalu banyak percobaan login. Coba lagi nanti.' });
+      }
+      const rawUser = String(body.username || body.email || '').trim();
+      const password = String(body.password || '').trim();
+      if (!rawUser || !password) {
+        return send(res, 400, { error: 'Username/Email dan kata sandi harus diisi.' });
+      }
+
+      // 1. Try Tailor
+      const tailorUser = rawUser.replace(/[\s-]/g, '').toLowerCase();
+      const tailorRow = get('SELECT * FROM tailor_accounts WHERE lower(username) = ?', [tailorUser]);
+      if (tailorRow && hashPin(password, tailorRow.pin_salt, 'godabaya-tailor-pin') === tailorRow.pin_hash) {
+        resetLoginRate(req);
+        const token = createSession('tailor', tailorRow.id);
+        return send(res, 200, {
+          token,
+          role: 'tailor',
+          user: { id: tailorRow.id, username: tailorRow.username, name: tailorRow.name },
+        });
+      }
+
+      // 2. Try Customer (Login or Auto-Register for any email)
+      const email = normalizeEmail(rawUser);
+      if (email && email.includes('@')) {
+        const customerRow = findCustomerByEmail(email);
+        if (customerRow) {
+          if (customerRow.password_hash && customerRow.password_salt) {
+            if (verifyPassword(password, customerRow.password_salt, customerRow.password_hash)) {
+              resetLoginRate(req);
+              linkLegacyBookings(customerRow.id, customerRow.whatsapp);
+              const token = createSession('customer', customerRow.id);
+              return send(res, 200, { token, role: 'customer', user: rowToCustomer(customerRow) });
+            }
+            return send(res, 400, { error: 'Kata sandi salah.' });
+          }
+        } else {
+          // Auto-create new customer account seamlessly
+          if (password.length < 3) {
+            return send(res, 400, { error: 'Kata sandi minimal 3 karakter.' });
+          }
+          const salt = newSalt();
+          const hash = hashPassword(password, salt);
+          const namePart = rawUser.split('@')[0];
+          const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+          const dummyWa = '08' + Math.floor(100000000 + Math.random() * 900000000);
+          const dummyPinHash = hashPin('1234', salt, 'godabaya-tailor-pin');
+
+          const resInsert = run(
+            'INSERT INTO customers (name, whatsapp, email, password_hash, password_salt, pin_hash, pin_salt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [formattedName, dummyWa, email, hash, salt, dummyPinHash, salt]
+          );
+          const id = Number(resInsert.lastInsertRowid);
+
+          resetLoginRate(req);
+          const token = createSession('customer', id);
+          const created = get('SELECT * FROM customers WHERE id = ?', [id]);
+          return send(res, 200, { token, role: 'customer', user: rowToCustomer(created) });
+        }
+      }
+
+      return send(res, 400, { error: 'Email/Username atau kata sandi salah.' });
     }
 
     if (method === 'POST' && parts[1] === 'customer' && parts[2] === 'logout') {
@@ -457,11 +667,73 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     }
 
-    if (method === 'GET' && parts[1] === 'me') {
+    // Profil customer yang sedang login (/api/customer/me & /api/me).
+    if (
+      method === 'GET' &&
+      ((parts[1] === 'customer' && parts[2] === 'me') || (parts[1] === 'me' && parts.length === 2))
+    ) {
       const auth = requireRole(req, res, 'customer');
       if (!auth) return;
       const c = get('SELECT * FROM customers WHERE id = ?', [auth.session.ref_id]);
       return send(res, 200, { customer: rowToCustomer(c) });
+    }
+
+    // Ubah data profil sendiri (nama & nomor WhatsApp).
+    if (method === 'PUT' && parts[1] === 'customer' && parts[2] === 'me' && parts.length === 3) {
+      const auth = requireRole(req, res, 'customer');
+      if (!auth) return;
+      const current = get('SELECT * FROM customers WHERE id = ?', [auth.session.ref_id]);
+      if (!current) return send(res, 401, { error: 'Akun tidak ditemukan' });
+
+      const fields = [];
+      const values = [];
+      if (body.name !== undefined) {
+        const name = String(body.name).trim();
+        if (!name) return send(res, 400, { error: 'Nama tidak boleh kosong.' });
+        fields.push('name = ?');
+        values.push(name);
+      }
+      if (body.whatsapp !== undefined) {
+        const wa = normalizeWa(body.whatsapp);
+        if (!wa) return send(res, 400, { error: 'Nomor WhatsApp tidak valid.' });
+        const dup = get('SELECT id FROM customers WHERE whatsapp = ? AND id != ?', [wa, current.id]);
+        if (dup) return send(res, 400, { error: 'Nomor WhatsApp sudah dipakai akun lain.' });
+        fields.push('whatsapp = ?');
+        values.push(wa);
+      }
+      if (fields.length === 0) return send(res, 200, { customer: rowToCustomer(current) });
+
+      values.push(current.id);
+      run(`UPDATE customers SET ${fields.join(', ')} WHERE id = ?`, values);
+      const updated = get('SELECT * FROM customers WHERE id = ?', [current.id]);
+      linkLegacyBookings(updated.id, updated.whatsapp);
+      return send(res, 200, { customer: rowToCustomer(updated) });
+    }
+
+    // Ubah password sendiri (wajib menyertakan password lama).
+    if (method === 'POST' && parts[1] === 'customer' && parts[2] === 'change-password') {
+      const auth = requireRole(req, res, 'customer');
+      if (!auth) return;
+      const row = get('SELECT * FROM customers WHERE id = ?', [auth.session.ref_id]);
+      if (!row) return send(res, 401, { error: 'Akun tidak ditemukan' });
+
+      const currentPassword = String(body.currentPassword ?? '');
+      const newPassword = String(body.newPassword ?? '');
+      if (!verifyPassword(currentPassword, row.password_salt, row.password_hash)) {
+        return send(res, 400, { error: 'Password saat ini salah.' });
+      }
+      if (newPassword.length < MIN_PASSWORD_LENGTH) {
+        return send(res, 400, { error: `Password baru minimal ${MIN_PASSWORD_LENGTH} karakter.` });
+      }
+      const salt = newSalt();
+      run('UPDATE customers SET password_hash = ?, password_salt = ? WHERE id = ?', [
+        hashPassword(newPassword, salt),
+        salt,
+        row.id,
+      ]);
+      // Sesi lain milik akun ini dicabut; sesi saat ini tetap berlaku.
+      run("DELETE FROM sessions WHERE role = 'customer' AND ref_id = ? AND token != ?", [row.id, auth.token]);
+      return send(res, 200, { ok: true });
     }
 
     // ---------- Tailor auth ----------
@@ -511,12 +783,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { value: row ? row.value : '' });
       }
       if (method === 'POST' && parts.length === 2) {
-        const customer = requireRole(req, res, 'customer');
-        if (customer) {
-          if (!body.key) return send(res, 400, { error: 'key diperlukan' });
-          run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [String(body.key), String(body.value ?? '')]);
-          return send(res, 200, { ok: true });
-        }
+        // Pengaturan bisnis hanya boleh diubah oleh penjahit.
         const tailor = requireRole(req, res, 'tailor');
         if (!tailor) return;
         if (!body.key) return send(res, 400, { error: 'key diperlukan' });
@@ -608,45 +875,23 @@ const server = http.createServer(async (req, res) => {
 
     // ---------- Bookings ----------
     if (parts[1] === 'bookings') {
-      // Buat booking (customer)
+      // Buat booking (wajib login sebagai customer; tanpa PIN)
       if (method === 'POST' && parts.length === 2) {
+        const auth = requireRole(req, res, 'customer');
+        if (!auth) return;
+
+        // Identitas pemilik booking diambil dari sesi, BUKAN dari body request.
+        const account = get('SELECT * FROM customers WHERE id = ?', [auth.session.ref_id]);
+        if (!account) return send(res, 401, { error: 'Akun tidak ditemukan' });
+
         const data = body;
-        if (!data.customerName || !data.customerPhone || !data.pin || !data.serviceType || !data.requestedDate) {
+        if (!data.serviceType || !data.requestedDate) {
           return send(res, 400, { error: 'Data booking tidak lengkap.' });
         }
 
-        const wa = normalizeWa(data.customerPhone);
-        if (!wa) return send(res, 400, { error: 'Nomor WhatsApp tidak valid.' });
-        const pin = String(data.pin || '').trim();
-        if (!/^\d{4,6}$/.test(pin)) return send(res, 400, { error: 'PIN harus 4-6 angka.' });
-
-        const variants = waVariants(wa);
-        const existing = get(
-          `SELECT * FROM customers WHERE whatsapp IN (${variants.map(() => '?').join(', ')})`,
-          variants
-        );
-
-        let customerId;
-        if (existing) {
-          if (hashPin(pin, existing.pin_salt, 'godabaya-customer-pin') !== existing.pin_hash) {
-            return send(res, 400, { error: 'Nomor WhatsApp sudah terdaftar dengan PIN berbeda.' });
-          }
-          customerId = existing.id;
-        } else {
-          const salt = crypto.randomBytes(16).toString('hex');
-          const result = run(
-            'INSERT INTO customers (name, whatsapp, pin_hash, pin_salt) VALUES (?, ?, ?, ?)',
-            [String(data.customerName), wa, hashPin(pin, salt, 'godabaya-customer-pin'), salt]
-          );
-          customerId = Number(result.lastInsertRowid);
-          
-          if (variants.length > 0) {
-            run(
-              `UPDATE bookings SET customer_id = ? WHERE customer_id IS NULL AND customer_phone IN (${variants.map(() => '?').join(', ')})`,
-              [customerId, ...variants]
-            );
-          }
-        }
+        const customerName = String(data.customerName || account.name).trim() || account.name;
+        const phoneInput = normalizeWa(data.customerPhone || account.whatsapp);
+        if (!phoneInput) return send(res, 400, { error: 'Nomor WhatsApp tidak valid.' });
 
         const counter = get('SELECT value FROM settings WHERE key = ?', ['booking_counter']);
         const next = (counter ? parseInt(counter.value, 10) : 0) + 1;
@@ -657,9 +902,9 @@ const server = http.createServer(async (req, res) => {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
           [
             code,
-            customerId,
-            String(data.customerName),
-            String(data.customerPhone),
+            account.id,
+            customerName,
+            phoneInput,
             String(data.serviceType),
             String(data.description || ''),
             String(data.requestedDate),
@@ -670,7 +915,7 @@ const server = http.createServer(async (req, res) => {
         run(
           `INSERT INTO notifications (booking_id, type, title, message, target)
            VALUES ((SELECT id FROM bookings WHERE code = ?), 'new_booking', 'Booking Baru', ?, 'tailor')`,
-          [code, `Pesanan baru dari ${data.customerName} — ${data.serviceType}`]
+          [code, `Pesanan baru dari ${customerName} — ${data.serviceType}`]
         );
         return send(res, 201, { code });
       }
@@ -720,9 +965,18 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { bookings: rows.map(rowToBooking) });
       }
 
-      // By code (publik, untuk pelacakan)
+      // By code (butuh login; customer hanya boleh melihat miliknya sendiri)
       if (method === 'GET' && parts.length === 3 && !/^\d+$/.test(parts[2])) {
         const row = get('SELECT * FROM bookings WHERE code = ?', [parts[2].trim().toUpperCase()]);
+        const tailor = tryRole(req, 'tailor');
+        if (tailor) return send(res, 200, { booking: rowToBooking(row) });
+
+        const auth = requireRole(req, res, 'customer');
+        if (!auth) return;
+        if (!row) return send(res, 200, { booking: null });
+        if (row.customer_id !== auth.session.ref_id) {
+          return send(res, 403, { error: 'Akses ditolak' });
+        }
         return send(res, 200, { booking: rowToBooking(row) });
       }
 
@@ -730,13 +984,12 @@ const server = http.createServer(async (req, res) => {
       if (method === 'GET' && parts.length === 3 && /^\d+$/.test(parts[2])) {
         const row = get('SELECT * FROM bookings WHERE id = ?', [parts[2]]);
         if (!row) return send(res, 404, { error: 'Booking tidak ditemukan' });
-        const customer = requireRole(req, res, 'customer');
-        if (customer) {
-          if (row.customer_id === customer.session.ref_id) return send(res, 200, { booking: rowToBooking(row) });
-          return send(res, 403, { error: 'Akses ditolak' });
-        }
-        const tailor = requireRole(req, res, 'tailor');
-        if (!tailor) return;
+        const tailor = tryRole(req, 'tailor');
+        if (tailor) return send(res, 200, { booking: rowToBooking(row) });
+
+        const auth = requireRole(req, res, 'customer');
+        if (!auth) return;
+        if (row.customer_id !== auth.session.ref_id) return send(res, 403, { error: 'Akses ditolak' });
         return send(res, 200, { booking: rowToBooking(row) });
       }
 
@@ -847,8 +1100,8 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { count: row.c });
       }
       if (method === 'POST' && parts.length === 4 && parts[3] === 'read') {
-        const anyAuth = requireRole(req, res, 'customer') || requireRole(req, res, 'tailor');
-        if (!anyAuth) return;
+        const anyAuth = tryRole(req, 'customer') || tryRole(req, 'tailor');
+        if (!anyAuth) return send(res, 401, { error: 'Akses ditolak. Silakan login terlebih dahulu.' });
         run('UPDATE notifications SET is_read = 1 WHERE id = ?', [parts[2]]);
         return send(res, 200, { ok: true });
       }
@@ -862,16 +1115,148 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---------- Customers (penjahit) ----------
-    if (method === 'GET' && parts[1] === 'customers') {
-      const auth = requireRole(req, res, 'tailor');
-      if (!auth) return;
-      const rows = all(
-        `SELECT c.id, c.name, c.whatsapp, c.created_at,
-                (SELECT COUNT(*) FROM bookings b WHERE b.customer_id = c.id) AS booking_count
-         FROM customers c
-         ORDER BY c.created_at DESC`
-      );
-      return send(res, 200, { customers: rows });
+    if (parts[1] === 'customers') {
+      // Daftar customer
+      if (method === 'GET' && parts.length === 2) {
+        const auth = requireRole(req, res, 'tailor');
+        if (!auth) return;
+        const rows = all(
+          `SELECT c.id, c.name, c.email, c.whatsapp, c.created_at,
+                  (c.password_hash IS NOT NULL AND c.password_hash != '') AS has_password,
+                  (SELECT COUNT(*) FROM bookings b WHERE b.customer_id = c.id) AS booking_count
+           FROM customers c
+           ORDER BY c.created_at DESC`
+        );
+        return send(res, 200, {
+          customers: rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            email: r.email ?? null,
+            whatsapp: r.whatsapp,
+            created_at: r.created_at,
+            has_password: r.has_password === 1,
+            booking_count: r.booking_count,
+          })),
+        });
+      }
+
+      // Tambah akun customer (hanya admin/penjahit)
+      if (method === 'POST' && parts.length === 2) {
+        const auth = requireRole(req, res, 'tailor');
+        if (!auth) return;
+
+        const name = String(body.name || '').trim();
+        const email = normalizeEmail(body.email);
+        const wa = normalizeWa(body.whatsapp);
+        const password = String(body.password ?? '');
+
+        if (!name) return send(res, 400, { error: 'Nama wajib diisi.' });
+        if (!isValidEmail(email)) return send(res, 400, { error: 'Format email tidak valid.' });
+        if (!wa) return send(res, 400, { error: 'Nomor WhatsApp wajib diisi.' });
+        if (password.length < MIN_PASSWORD_LENGTH) {
+          return send(res, 400, { error: `Password sementara minimal ${MIN_PASSWORD_LENGTH} karakter.` });
+        }
+        if (findCustomerByEmail(email)) {
+          return send(res, 400, { error: 'Email sudah dipakai akun customer lain.' });
+        }
+
+        // Nomor WA sudah pernah dipakai (mis. customer lama tanpa email):
+        // lengkapi akun lama, jangan buat duplikat & jangan hapus data.
+        const variants = waVariants(wa);
+        const existing = get(
+          `SELECT * FROM customers WHERE whatsapp IN (${variants.map(() => '?').join(', ')})`,
+          variants
+        );
+
+        const salt = newSalt();
+        const hash = hashPassword(password, salt);
+
+        if (existing) {
+          if (existing.email && normalizeEmail(existing.email) !== email) {
+            return send(res, 400, {
+              error: `Nomor WhatsApp ini sudah terdaftar dengan email ${existing.email}.`,
+            });
+          }
+          run('UPDATE customers SET name = ?, email = ?, password_hash = ?, password_salt = ? WHERE id = ?', [
+            name,
+            email,
+            hash,
+            salt,
+            existing.id,
+          ]);
+          linkLegacyBookings(existing.id, existing.whatsapp);
+          const updated = get('SELECT * FROM customers WHERE id = ?', [existing.id]);
+          return send(res, 200, { customer: rowToCustomer(updated), linkedExisting: true });
+        }
+
+        const result = run(
+          'INSERT INTO customers (name, whatsapp, email, password_hash, password_salt, pin_hash, pin_salt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [name, wa, email, hash, salt, '', '']
+        );
+        const id = Number(result.lastInsertRowid);
+        linkLegacyBookings(id, wa);
+        return send(res, 201, { customer: rowToCustomer(get('SELECT * FROM customers WHERE id = ?', [id])) });
+      }
+
+      // Ubah akun customer / reset password (hanya admin/penjahit)
+      if (method === 'PUT' && parts.length === 3 && /^\d+$/.test(parts[2])) {
+        const auth = requireRole(req, res, 'tailor');
+        if (!auth) return;
+        const target = get('SELECT * FROM customers WHERE id = ?', [parts[2]]);
+        if (!target) return send(res, 404, { error: 'Customer tidak ditemukan' });
+
+        const fields = [];
+        const values = [];
+
+        if (body.name !== undefined) {
+          const name = String(body.name).trim();
+          if (!name) return send(res, 400, { error: 'Nama tidak boleh kosong.' });
+          fields.push('name = ?');
+          values.push(name);
+        }
+        if (body.email !== undefined) {
+          const email = normalizeEmail(body.email);
+          if (!isValidEmail(email)) return send(res, 400, { error: 'Format email tidak valid.' });
+          const dup = findCustomerByEmail(email);
+          if (dup && dup.id !== target.id) {
+            return send(res, 400, { error: 'Email sudah dipakai akun customer lain.' });
+          }
+          fields.push('email = ?');
+          values.push(email);
+        }
+        if (body.whatsapp !== undefined) {
+          const wa = normalizeWa(body.whatsapp);
+          if (!wa) return send(res, 400, { error: 'Nomor WhatsApp tidak valid.' });
+          const dup = get('SELECT id FROM customers WHERE whatsapp = ? AND id != ?', [wa, target.id]);
+          if (dup) return send(res, 400, { error: 'Nomor WhatsApp sudah dipakai akun lain.' });
+          fields.push('whatsapp = ?');
+          values.push(wa);
+        }
+
+        let passwordChanged = false;
+        if (body.password !== undefined && String(body.password) !== '') {
+          const password = String(body.password);
+          if (password.length < MIN_PASSWORD_LENGTH) {
+            return send(res, 400, { error: `Password minimal ${MIN_PASSWORD_LENGTH} karakter.` });
+          }
+          const salt = newSalt();
+          fields.push('password_hash = ?', 'password_salt = ?');
+          values.push(hashPassword(password, salt), salt);
+          passwordChanged = true;
+        }
+
+        if (fields.length === 0) return send(res, 200, { customer: rowToCustomer(target) });
+
+        values.push(target.id);
+        run(`UPDATE customers SET ${fields.join(', ')} WHERE id = ?`, values);
+        if (passwordChanged) {
+          // Paksa login ulang setelah password direset admin.
+          run("DELETE FROM sessions WHERE role = 'customer' AND ref_id = ?", [target.id]);
+        }
+        const updated = get('SELECT * FROM customers WHERE id = ?', [target.id]);
+        linkLegacyBookings(updated.id, updated.whatsapp);
+        return send(res, 200, { customer: rowToCustomer(updated) });
+      }
     }
 
     // ---------- Reset akun (penjahit) ----------

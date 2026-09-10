@@ -20,6 +20,8 @@ export interface Service {
 export interface Customer {
   id: number;
   name: string;
+  /** Email = username login customer (akun dibuat oleh admin/penjahit). */
+  email: string | null;
   whatsapp: string;
   createdAt?: string;
 }
@@ -83,10 +85,8 @@ export interface Setting {
 
 // ========== Form Types ==========
 export interface BookingFormData {
-  customerId?: number | null;
   customerName: string;
   customerPhone: string;
-  pin?: string;
   serviceType: string;
   description: string;
   requestedDate: Date;

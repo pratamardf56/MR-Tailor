@@ -11,13 +11,15 @@ import { BookingStatusType } from '@/constants/config';
 import { apiRequest } from '@/utils/api';
 
 export function useBookings() {
+  // Booking wajib login: backend menetapkan customer_id dari token sesi,
+  // sehingga customer_id tidak pernah dikirim dari frontend.
   const createBooking = useCallback(async (data: BookingFormData): Promise<string> => {
     const res = await apiRequest<{ code: string }>('/api/bookings', {
       method: 'POST',
+      role: 'customer',
       body: {
         customerName: data.customerName,
         customerPhone: data.customerPhone,
-        pin: data.pin,
         serviceType: data.serviceType,
         description: data.description,
         requestedDate: data.requestedDate.toISOString(),
@@ -46,9 +48,9 @@ export function useBookings() {
     return res.bookings ?? [];
   }, []);
 
-  // customerId & phone dipertahankan demi kompatibilitas pemanggil;
-  // backend menentukan kepemilikan berdasarkan token customer.
-  const getBookingsByCustomer = useCallback(async (_customerId: number, _phone: string): Promise<Booking[]> => {
+  // Booking milik akun yang sedang login. Backend menentukan kepemilikan
+  // berdasarkan token customer (customer_id tidak dikirim dari frontend).
+  const getMyBookings = useCallback(async (): Promise<Booking[]> => {
     const res = await apiRequest<{ bookings: Booking[] }>('/api/bookings/mine', { role: 'customer' });
     return res.bookings ?? [];
   }, []);
@@ -104,7 +106,7 @@ export function useBookings() {
     getBookingByCode,
     getBookingById,
     getAllBookings,
-    getBookingsByCustomer,
+    getMyBookings,
     acceptBooking,
     proposeAlternateDate,
     customerAcceptDate,

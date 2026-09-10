@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, TouchableOpacity } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,83 +19,49 @@ import { useAuth } from '@/auth/AuthContext';
 import { Booking } from '@/types';
 import { formatDateFull, formatDateShort, formatTime, formatPhone } from '@/utils/format';
 import { openWhatsApp } from '@/utils/linking';
-import { whatsAppVariants } from '@/utils/phone';
 
 export default function OrderDetailScreen() {
   const { bookingCode } = useLocalSearchParams<{ bookingCode: string }>();
-  const { getBookingByCode, customerAcceptDate, customerRejectDate, getBookingsByCustomer } = useBookings();
-  const { customer, login } = useAuth();
-  
+  const { getBookingByCode, customerAcceptDate, customerRejectDate } = useBookings();
+  const { customer, isLoading: authLoading } = useAuth();
+
   const [booking, setBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  // Quick lookup state
-  const [cekWhatsapp, setCekWhatsapp] = useState(customer?.whatsapp || '');
-  const [cekPin, setCekPin] = useState('');
-  const [cekShowPin, setCekShowPin] = useState(false);
-  const [cekLoading, setCekLoading] = useState(false);
-
   useEffect(() => {
-    if (!customer) {
-      router.replace('/(customer)/cek-pesanan');
+    if (!authLoading && !customer) {
+      router.replace('/login');
     }
-  }, [customer]);
+  }, [customer, authLoading]);
 
   const loadBooking = useCallback(async (code: string) => {
     try {
       setLoading(true);
+      setAccessDenied(false);
       const data = await getBookingByCode(code);
       setBooking(data);
-
-      if (data && customer) {
-        const owned = data.customerId != null
-          ? data.customerId === customer.id
-          : whatsAppVariants(customer.whatsapp).some((v) => data.customerPhone === v.replace('+', ''));
-        setAccessDenied(!owned);
-      } else if (data && !customer) {
+    } catch (error: any) {
+      // Backend menolak bila pesanan bukan milik akun yang login.
+      const message = String(error?.message ?? '');
+      if (message.includes('Akses ditolak')) {
         setAccessDenied(true);
+      } else {
+        console.error('Failed to load booking:', error);
       }
-    } catch (error) {
-      console.error('Failed to load booking:', error);
+      setBooking(null);
     } finally {
       setLoading(false);
     }
-  }, [getBookingByCode, customer]);
+  }, [getBookingByCode]);
 
   useEffect(() => {
-    if (bookingCode) {
+    if (bookingCode && customer) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       loadBooking(bookingCode);
     }
-  }, [bookingCode, loadBooking]);
-
-  const handleQuickLookup = async () => {
-    if (!cekWhatsapp.trim() || !cekPin.trim()) {
-      Alert.alert('Error', 'Mohon isi nomor WhatsApp dan PIN.');
-      return;
-    }
-    try {
-      setCekLoading(true);
-      const loggedInCustomer = await login(cekWhatsapp, cekPin);
-      
-      // Load current customer's latest booking
-      const list = await getBookingsByCustomer(loggedInCustomer.id, loggedInCustomer.whatsapp);
-      if (list && list.length > 0) {
-        // Clear PIN input after successful lookup
-        setCekPin('');
-        router.setParams({ bookingCode: list[0].code });
-        loadBooking(list[0].code);
-      } else {
-        Alert.alert('Info', 'Pelanggan ini belum memiliki pesanan.');
-      }
-    } catch {
-      Alert.alert('Gagal', 'Data yang dimasukkan tidak sesuai.');
-    } finally {
-      setCekLoading(false);
-    }
-  };
+  }, [bookingCode, customer, loadBooking]);
 
   const handleAcceptDate = async () => {
     if (!booking) return;
@@ -253,67 +219,25 @@ export default function OrderDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        {/* ═══ BOX 1: QUICK LOOKUP BAR ("Cek Pesanan Anda") ═══ */}
+        {/* ═══ BOX 1: INFO AKUN (tanpa PIN — pesanan diambil dari akun login) ═══ */}
         <View style={styles.lookupSection}>
-          <Text style={styles.lookupTitle}>Cek Pesanan Anda</Text>
-          <Text style={styles.lookupSubtitle}>Masukkan nomor WhatsApp dan PIN Anda untuk melihat detail pesanan.</Text>
-          
-          <View style={styles.lookupForm}>
-            {/* WhatsApp Input */}
-            <View style={styles.lookupField}>
-              <Text style={styles.lookupLabel}>Nomor WhatsApp</Text>
-              <View style={styles.lookupInputBox}>
-                <Ionicons name="logo-whatsapp" size={16} color={Colors.textTertiary} style={styles.lookupInputIcon} />
-                <TextInput
-                  placeholder="Contoh: 081234567890"
-                  placeholderTextColor={Colors.textTertiary}
-                  value={cekWhatsapp}
-                  onChangeText={setCekWhatsapp}
-                  keyboardType="phone-pad"
-                  style={styles.lookupTextInput}
-                />
-              </View>
-            </View>
+          <Text style={styles.lookupTitle}>Pesanan Anda</Text>
+          <Text style={styles.lookupSubtitle}>
+            Detail pesanan ditampilkan otomatis dari akun yang sedang login.
+          </Text>
 
-            {/* PIN Input with show/hide eye toggle */}
-            <View style={styles.lookupField}>
-              <Text style={styles.lookupLabel}>PIN</Text>
-              <View style={styles.lookupInputBox}>
-                <Ionicons name="lock-closed-outline" size={16} color={Colors.textTertiary} style={styles.lookupInputIcon} />
-                <TextInput
-                  placeholder="Masukkan PIN Anda"
-                  placeholderTextColor={Colors.textTertiary}
-                  value={cekPin}
-                  onChangeText={setCekPin}
-                  secureTextEntry={!cekShowPin}
-                  keyboardType="numeric"
-                  maxLength={6}
-                  style={[styles.lookupTextInput, { paddingRight: 32 }]}
-                />
-                <TouchableOpacity 
-                  onPress={() => setCekShowPin(!cekShowPin)} 
-                  style={styles.lookupEyeBtn}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons 
-                    name={cekShowPin ? "eye-off-outline" : "eye-outline"} 
-                    size={16} 
-                    color={Colors.textTertiary} 
-                  />
-                </TouchableOpacity>
-              </View>
+          <View style={styles.accountChip}>
+            <Ionicons name="person-circle-outline" size={18} color={Colors.primary} />
+            <View style={styles.accountChipInfo}>
+              <Text style={styles.accountChipName} numberOfLines={1}>{customer?.name ?? '-'}</Text>
+              <Text style={styles.accountChipEmail} numberOfLines={1}>{customer?.email ?? '-'}</Text>
             </View>
-
-            {/* Submit button */}
             <TouchableOpacity
-              style={styles.lookupSubmitBtn}
-              onPress={handleQuickLookup}
-              activeOpacity={0.85}
-              disabled={cekLoading}
+              onPress={() => router.replace('/(customer)/pesanan')}
+              activeOpacity={0.8}
+              style={styles.accountChipBtn}
             >
-              <Text style={styles.lookupSubmitText}>
-                {cekLoading ? 'MEMUAT...' : 'LIHAT PESANAN'}
-              </Text>
+              <Text style={styles.accountChipBtnText}>SEMUA PESANAN</Text>
             </TouchableOpacity>
           </View>
 
@@ -323,17 +247,17 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
-        {!booking ? (
-          <View style={styles.emptyDetailContainer}>
-            <Ionicons name="search-outline" size={48} color={Colors.textTertiary} />
-            <Text style={styles.errorText}>Pesanan tidak ditemukan.</Text>
-            <Text style={styles.errorSubText}>Silakan gunakan kolom di atas untuk mencari pesanan Anda.</Text>
-          </View>
-        ) : accessDenied ? (
+        {accessDenied ? (
           <View style={styles.emptyDetailContainer}>
             <Ionicons name="lock-closed-outline" size={48} color={Colors.textTertiary} />
             <Text style={styles.errorText}>Akses Ditolak</Text>
-            <Text style={styles.errorSubText}>Pesanan ini bukan milik akun Anda. Silakan login kembali.</Text>
+            <Text style={styles.errorSubText}>Pesanan ini bukan milik akun Anda.</Text>
+          </View>
+        ) : !booking ? (
+          <View style={styles.emptyDetailContainer}>
+            <Ionicons name="search-outline" size={48} color={Colors.textTertiary} />
+            <Text style={styles.errorText}>Pesanan tidak ditemukan.</Text>
+            <Text style={styles.errorSubText}>Buka halaman Cek Pesanan untuk melihat daftar pesanan Anda.</Text>
           </View>
         ) : (
           <View style={styles.detailContainer}>
@@ -624,7 +548,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  // ─── BOX 1: QUICK LOOKUP BAR ──────────────────────
+  // ─── BOX 1: INFO AKUN ─────────────────────────────
   lookupSection: {
     backgroundColor: Colors.surface,
     paddingHorizontal: 20,
@@ -645,56 +569,41 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     marginBottom: 14,
   },
-  lookupForm: {
-    gap: 12,
+  accountChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: Colors.backgroundAlt,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  lookupField: {
-    gap: 4,
+  accountChipInfo: {
+    flex: 1,
   },
-  lookupLabel: {
-    fontSize: 11,
+  accountChipName: {
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.text,
   },
-  lookupInputBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 40,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
+  accountChipEmail: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  accountChipBtn: {
+    backgroundColor: Colors.primary,
     borderRadius: 8,
-    backgroundColor: Colors.surface,
     paddingHorizontal: 10,
-    position: 'relative',
+    paddingVertical: 7,
   },
-  lookupInputIcon: {
-    marginRight: 6,
-  },
-  lookupTextInput: {
-    fontSize: 12,
-    color: Colors.text,
-    flex: 1,
-    height: '100%',
-    padding: 0,
-  },
-  lookupEyeBtn: {
-    position: 'absolute',
-    right: 10,
-    padding: 4,
-  },
-  lookupSubmitBtn: {
-    backgroundColor: Colors.primary, // Dark brown solid background
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  lookupSubmitText: {
-    fontSize: 11,
+  accountChipBtnText: {
+    fontSize: 9,
     fontWeight: '800',
     color: Colors.textOnPrimary,
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   lookupPrivacy: {
     flexDirection: 'row',

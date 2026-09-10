@@ -18,8 +18,8 @@ import { Booking } from '@/types';
 import { formatDateShort } from '@/utils/format';
 
 export default function PesananScreen() {
-  const { getBookingsByCustomer } = useBookings();
-  const { customer } = useAuth();
+  const { getMyBookings } = useBookings();
+  const { customer, isLoading: authLoading } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,24 +31,25 @@ export default function PesananScreen() {
         setBookings([]);
         return;
       }
-      // Hanya tampilkan pesanan milik customer yang login
-      const data = await getBookingsByCustomer(customer.id, customer.whatsapp);
+      // Backend menentukan pemilik pesanan dari token sesi (customer_id).
+      const data = await getMyBookings();
       setBookings(data);
     } catch (error) {
       console.error('Failed to load bookings:', error);
     } finally {
       setLoading(false);
     }
-  }, [getBookingsByCustomer, customer]);
+  }, [getMyBookings, customer]);
 
   useFocusEffect(
     useCallback(() => {
+      if (authLoading) return;
       if (!customer) {
-        router.replace('/(customer)/cek-pesanan');
+        router.replace('/login');
       } else {
         loadBookings();
       }
-    }, [customer, loadBookings])
+    }, [customer, authLoading, loadBookings])
   );
 
   const onRefresh = async () => {
@@ -96,8 +97,8 @@ export default function PesananScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View>
-            <Text style={styles.title}>Pesanan Saya</Text>
-            <Text style={styles.subtitle}>Pantau status pengerjaan pesanan Anda</Text>
+            <Text style={styles.title}>Cek Pesanan</Text>
+            <Text style={styles.subtitle}>Pesanan pada akun {customer?.name ?? 'Anda'}</Text>
           </View>
         </View>
         <View style={styles.headerRight}>
@@ -133,7 +134,7 @@ export default function PesananScreen() {
                 <View style={styles.emptyIconBox}>
                   <Ionicons name="receipt-outline" size={40} color={Colors.accent} />
                 </View>
-                <Text style={styles.emptyTitle}>Belum ada pesanan</Text>
+                <Text style={styles.emptyTitle}>Belum ada pesanan.</Text>
                 <Text style={styles.emptyText}>Anda belum membuat pesanan apapun.</Text>
                 <TouchableOpacity 
                   style={styles.bookBtn} 
@@ -180,9 +181,9 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: Colors.background,
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.borderLight,
+    borderColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },

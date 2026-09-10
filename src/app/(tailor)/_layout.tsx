@@ -14,15 +14,12 @@ export default function TailorTabLayout() {
   const { tailor } = useTailorAuth();
 
   useEffect(() => {
-    // Website customer bersifat publik: akses admin tidak tersedia di web.
-    if (!ADMIN_ENABLED) {
-      router.replace('/(customer)');
-    } else if (!tailor) {
-      router.replace('/penjahit');
+    if (!tailor) {
+      router.replace('/login');
     }
   }, [tailor]);
 
-  if (!ADMIN_ENABLED) return null;
+  if (!tailor) return null;
 
   return (
     <Tabs
@@ -65,15 +62,6 @@ export default function TailorTabLayout() {
           title: 'Booking',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="list-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="customers"
-        options={{
-          title: 'Customer',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
           ),
         }}
       />

@@ -44,7 +44,7 @@ export default function PengaturanScreen() {
           style: 'destructive',
           onPress: async () => {
             await logoutTailor();
-            router.replace('/penjahit');
+            router.replace('/login');
           },
         },
       ]
@@ -54,7 +54,7 @@ export default function PengaturanScreen() {
   const handleResetAccounts = () => {
     Alert.alert(
       'Reset Semua Akun',
-      'Semua nomor WhatsApp customer akan dihapus. Pesanan, harga, portofolio, dan pengaturan tetap aman. Akun admin tidak terpengaruh. Lanjutkan?',
+      'Semua akun login customer (email & password) akan dihapus dan Anda harus membuatnya kembali. Pesanan, harga, portofolio, dan pengaturan tetap aman. Akun admin tidak terpengaruh. Lanjutkan?',
       [
         { text: 'Batal', style: 'cancel' },
         {
@@ -217,7 +217,7 @@ export default function PengaturanScreen() {
               <View style={styles.accountInfo}>
                 <Text style={styles.dangerTitle}>Reset Semua Akun</Text>
                 <Text style={styles.dangerDesc}>
-                  Hapus seluruh customer (nomor WhatsApp & PIN). Pesanan & data bisnis tetap tersimpan.
+                  Hapus seluruh akun login customer (email & password). Pesanan & data bisnis tetap tersimpan.
                 </Text>
               </View>
             </View>

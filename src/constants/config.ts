@@ -88,10 +88,9 @@ export const WhyChooseUs = [
 // Navigation menu for desktop navbar
 export const NavMenu = [
   { label: 'Beranda', route: '/(customer)' as const },
-  { label: 'Layanan', route: '/(customer)/harga' as const },
-  { label: 'Harga', route: '/(customer)/harga' as const },
+  { label: 'Booking & Layanan', route: '/(customer)/booking' as const },
   { label: 'Alamat', route: '/alamat' as const },
-  { label: 'Tentang Kami', route: '/portfolio' as const },
+  { label: 'Portofolio', route: '/portfolio' as const },
 ] as const;
 
 // Portfolio categories

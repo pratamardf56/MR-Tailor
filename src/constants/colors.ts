@@ -16,10 +16,10 @@ export const Colors = {
   accentLight: '#E0B896',    // Lighter amber
   accentDark: '#A07550',     // Darker amber
 
-  // Background — Cream & beige
-  background: '#F5EFE6',     // Warm cream (#F5EFE6)
-  backgroundAlt: '#EDE5D8',  // Slightly darker cream
-  surface: '#FFFDF9',        // Card surfaces - very light cream
+  // Background — Putih bersih
+  background: '#FFFFFF',        // Pure white
+  backgroundAlt: '#F5F5F5',     // Very light gray (for subtle contrast)
+  surface: '#FFFFFF',            // Card surfaces - white
   surfaceElevated: '#FFFFFF',
 
   // Text
@@ -57,7 +57,7 @@ export const Colors = {
   // Tab bar
   tabActive: '#4A2E22',
   tabInactive: '#A08C82',
-  tabBarBackground: '#FFFDF9',
+  tabBarBackground: '#FFFFFF',
 } as const;
 
 export type ColorKey = keyof typeof Colors;

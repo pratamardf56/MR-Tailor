@@ -40,14 +40,12 @@ export default function TailorDashboardScreen() {
   );
 
   useEffect(() => {
-    if (!ADMIN_ENABLED) {
-      router.replace('/(customer)');
-    } else if (!tailor) {
-      router.replace('/penjahit');
+    if (!tailor) {
+      router.replace('/login');
     }
   }, [tailor]);
 
-  if (!ADMIN_ENABLED) return null;
+  if (!tailor) return null;
 
   const handleLogout = () => {
     Alert.alert(
@@ -60,7 +58,7 @@ export default function TailorDashboardScreen() {
           style: 'destructive',
           onPress: async () => {
             await logoutTailor();
-            router.replace('/penjahit');
+            router.replace('/login');
           },
         },
       ]
@@ -81,13 +79,6 @@ export default function TailorDashboardScreen() {
       icon: 'list-outline' as const,
       color: Colors.primary,
       onPress: () => router.push('/(tailor)'),
-    },
-    {
-      title: 'Customer',
-      desc: 'Daftar customer yang terdaftar',
-      icon: 'people-outline' as const,
-      color: Colors.success,
-      onPress: () => router.push('/(tailor)/customers'),
     },
   ];
 

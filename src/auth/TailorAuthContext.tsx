@@ -32,6 +32,7 @@ interface TailorAuthContextType {
   isLoading: boolean;
   loginTailor: (username: string, pin: string) => Promise<TailorAccount>;
   logoutTailor: () => Promise<void>;
+  setTailorSession: (token: string, tailor: TailorAccount) => Promise<void>;
 }
 
 const TailorAuthContext = createContext<TailorAuthContextType>({
@@ -39,6 +40,7 @@ const TailorAuthContext = createContext<TailorAuthContextType>({
   isLoading: true,
   loginTailor: async () => { throw new Error('Auth penjahit tidak siap'); },
   logoutTailor: async () => {},
+  setTailorSession: async () => { throw new Error('Auth penjahit tidak siap'); },
 });
 
 export function useTailorAuth() {
@@ -103,8 +105,14 @@ export function TailorAuthProvider({ children }: { children: React.ReactNode }) 
     await clearSession(SESSION_KEY);
   }, []);
 
+  const setTailorSession = useCallback(async (token: string, newTailor: TailorAccount) => {
+    setToken('tailor', token);
+    await saveSession(SESSION_KEY, token);
+    setTailor(newTailor);
+  }, []);
+
   return (
-    <TailorAuthContext.Provider value={{ tailor, isLoading, loginTailor, logoutTailor }}>
+    <TailorAuthContext.Provider value={{ tailor, isLoading, loginTailor, logoutTailor, setTailorSession }}>
       {children}
     </TailorAuthContext.Provider>
   );

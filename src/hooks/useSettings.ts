@@ -17,8 +17,9 @@ export function useSettings() {
     }
   }, []);
 
+  // Pengaturan bisnis hanya dapat diubah oleh penjahit (divalidasi backend).
   const updateSetting = useCallback(async (key: string, value: string): Promise<void> => {
-    await apiRequest('/api/settings', { method: 'POST', body: { key, value } });
+    await apiRequest('/api/settings', { method: 'POST', role: 'tailor', body: { key, value } });
   }, []);
 
   const getAllSettings = useCallback(async (): Promise<Record<string, string>> => {
