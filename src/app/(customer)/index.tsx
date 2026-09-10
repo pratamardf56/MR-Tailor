@@ -376,11 +376,13 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     fontFamily: SERIF,
-    fontSize: 27,
+    fontSize: 26,
     fontWeight: '700',
     color: '#FFFFFF',
-    lineHeight: 34,
+    lineHeight: 32,
     marginBottom: 8,
+    flexWrap: 'wrap',
+    width: '100%',
   },
   heroTitleDesktop: {
     fontSize: 46,
@@ -391,6 +393,7 @@ const styles = StyleSheet.create({
     color: GOLD,
     fontFamily: SERIF,
     fontWeight: '700',
+    flexWrap: 'wrap',
   },
   heroDesc: {
     fontSize: 13,
